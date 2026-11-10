@@ -154,7 +154,9 @@ async fn list_composers(State(app): S) -> ApiResult {
         &db,
         "SELECT c.id, c.name, c.last_ok_at, c.last_error,
            (SELECT COUNT(*) FROM hits h WHERE h.composer_id=c.id AND h.removed_at IS NULL),
-           (SELECT COUNT(*) FROM hits h WHERE h.composer_id=c.id AND h.is_new=1)
+           (SELECT COUNT(*) FROM hits h WHERE h.composer_id=c.id AND h.is_new=1),
+           c.created_at,
+           (SELECT MAX(found_at) FROM hits h WHERE h.composer_id=c.id AND h.is_new=1)
          FROM composers c ORDER BY c.name COLLATE NOCASE",
         [],
         |r| {
@@ -165,11 +167,13 @@ async fn list_composers(State(app): S) -> ApiResult {
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, i64>(4)?,
                 r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
+                r.get::<_, Option<i64>>(7)?,
             ))
         },
     )?;
     let mut out = Vec::new();
-    for (id, name, last_ok, last_error, total, new) in comps {
+    for (id, name, last_ok, last_error, total, new, created_at, last_new_at) in comps {
         let mut incomplete: Vec<Value> = Vec::new();
         let terms = query_all(
             &db,
@@ -198,6 +202,7 @@ async fn list_composers(State(app): S) -> ApiResult {
         out.push(json!({
             "id": id, "name": name, "terms": terms, "last_ok_at": last_ok, "last_error": last_error,
             "total": total, "new": new, "incomplete": incomplete,
+            "created_at": created_at, "last_new_at": last_new_at,
             "scanning": scanning.get(&id).map(|p| json!({"term": p.term, "done": p.done, "total": p.total, "step": p.step, "steps": p.steps})),
         }));
     }
