@@ -24,6 +24,13 @@
   input[type=text], input[type=number], input[type=password], input[type=url], input[type=search] { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); min-width:0 }
   :focus-visible { outline:2px solid var(--acc); outline-offset:1px }
   .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap } .row.grow input { flex:1 }
+  .side { position:sticky; top:62px; max-height:calc(100vh - 78px); display:flex; flex-direction:column; gap:8px }
+  @media (max-width:820px){ .side { position:static; max-height:none } #list { max-height:50vh } }
+  .side input[type=search], .side select { width:100% }
+  #list { overflow-y:auto; min-height:120px; flex:1; margin:0 -4px; padding:0 4px }
+  .between { justify-content:space-between }
+  .grp { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 6px; margin-top:8px; font-weight:600; font-size:12px; color:var(--mut); cursor:pointer; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card); user-select:none }
+  .grp:hover { color:var(--fg) } .grp .n { font-weight:400 }
   .comp { padding:8px; border-radius:8px; cursor:pointer; border:1px solid transparent; margin-top:6px }
   .comp.sel { border-color:var(--acc); background:color-mix(in srgb,var(--acc) 8%,transparent) }
   .comp b { display:block } .mut { color:var(--mut); font-size:12px }
@@ -61,6 +68,8 @@
   .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:8px 14px; border-radius:8px; z-index:20; max-width:90vw }
   .kind-credit { background:var(--new) } .kind-artist { background:#0ea5e9 } .kind-title { background:#a855f7 } .kind-none { background:var(--mut) }
   pre.det { margin:0; font:12px/1.4 ui-monospace,monospace; white-space:pre-wrap; color:var(--mut) }
+  /* sempre por último: sem isto, regras como main{display:grid} anulam o atributo hidden e as abas não trocam */
+  [hidden] { display:none !important }
 </style>
 </head>
 <body>
@@ -84,8 +93,20 @@
 
 <div class="page">
   <main id="viewComp">
-    <aside class="card">
+    <aside class="card side">
       <button id="addBtn" class="pri" style="width:100%" data-i18n="add.btn"></button>
+      <input type="search" id="sideQ" data-i18n-ph="side.search" data-i18n-aria="side.search" autocomplete="off">
+      <select id="sideSort" data-i18n-aria="side.sort">
+        <option value="az" data-i18n="sort.az"></option><option value="za" data-i18n="sort.za"></option>
+        <option value="activity" data-i18n="sort.activity"></option><option value="records" data-i18n="sort.records"></option>
+        <option value="checked" data-i18n="sort.checked"></option><option value="added" data-i18n="sort.added"></option>
+      </select>
+      <div id="sideFilters"></div>
+      <div class="row between">
+        <label class="mut" id="sideGroupLbl" data-i18n-title="side.group.tip"><input type="checkbox" id="sideGroup"> <span data-i18n="side.group"></span></label>
+        <span><button class="link mut" id="sideCollapse" data-i18n="side.collapse"></button> · <button class="link mut" id="sideExpand" data-i18n="side.expand"></button></span>
+      </div>
+      <span class="mut" id="sideCount"></span>
       <div id="list"></div>
     </aside>
     <section class="card" id="detail"><span class="mut" data-i18n="detail.empty"></span></section>
@@ -150,6 +171,10 @@
 const $ = s => document.querySelector(s);
 const I18N = {
 pt: {
+  'toast.scan':'Verificação iniciada.','toast.resume':'Carregamento retomado.','toast.reload':'Recarregamento iniciado. Acompanhe a barra de progresso.',
+  'side.search':'Buscar compositor ou alias…','side.sort':'Ordenar compositores','sort.az':'Nome (A–Z)','sort.za':'Nome (Z–A)','sort.activity':'Novidades recentes','sort.records':'Mais registros','sort.checked':'Verificados há mais tempo','sort.added':'Adicionados recentemente',
+  'side.group':'Agrupar por inicial','side.group.tip':'Disponível ao ordenar por nome','side.collapse':'Recolher','side.expand':'Expandir','side.count':'{0} de {1}','side.none':'Nenhum compositor encontrado.',
+  'filter.all':'Todos','filter.new':'Novos (7 dias)','filter.pending':'Com pendência',
   'tab.composers':'Compositores','tab.new':'Novos','tab.history':'Histórico','tab.settings':'Configurações',
   'notif.enable':'🔔 Ativar avisos','notif.active':'🔔 Avisos ativos','notif.title':'Avisos do navegador quando surgir registro novo','notif.body':'{0} novo(s) registro(s) encontrado(s)',
   'scan.all':'Verificar todos agora','reload.all':'Recarregamento geral','reload.all.title':'Percorre todas as páginas de todos os compositores (mais lento)',
@@ -188,6 +213,10 @@ pt: {
   'err.invalid_setting':'Configuração inválida.','err.forbidden':'Acesso negado.','err.internal':'Erro interno.',
   'scan.initial':'"{0}": {1} registros (carga inicial)','scan.incremental':'"{0}": {1} registros verificados, {2} novo(s)','scan.error':'ERRO: {0}','scan.removed':'{0} registro(s) não estão mais no site','notify.failed':'aviso por {0} falhou: {1}'},
 en: {
+  'toast.scan':'Check started.','toast.resume':'Loading resumed.','toast.reload':'Full reload started. Follow the progress bar.',
+  'side.search':'Search composer or alias…','side.sort':'Sort composers','sort.az':'Name (A–Z)','sort.za':'Name (Z–A)','sort.activity':'Recent finds','sort.records':'Most records','sort.checked':'Longest since checked','sort.added':'Recently added',
+  'side.group':'Group by initial','side.group.tip':'Available when sorting by name','side.collapse':'Collapse','side.expand':'Expand','side.count':'{0} of {1}','side.none':'No composers found.',
+  'filter.all':'All','filter.new':'New (7 days)','filter.pending':'Needs attention',
   'tab.composers':'Composers','tab.new':'New','tab.history':'History','tab.settings':'Settings',
   'notif.enable':'🔔 Enable alerts','notif.active':'🔔 Alerts on','notif.title':'Browser alerts when a new record shows up','notif.body':'{0} new record(s) found',
   'scan.all':'Check all now','reload.all':'Full reload','reload.all.title':'Walks through every page for all composers (slower)',
@@ -226,6 +255,10 @@ en: {
   'err.invalid_setting':'Invalid setting.','err.forbidden':'Access denied.','err.internal':'Internal error.',
   'scan.initial':'"{0}": {1} records (initial load)','scan.incremental':'"{0}": {1} records checked, {2} new','scan.error':'ERROR: {0}','scan.removed':'{0} record(s) are no longer on the site','notify.failed':'alert via {0} failed: {1}'},
 es: {
+  'toast.scan':'Comprobación iniciada.','toast.resume':'Carga reanudada.','toast.reload':'Recarga iniciada. Sigue la barra de progreso.',
+  'side.search':'Buscar compositor o alias…','side.sort':'Ordenar compositores','sort.az':'Nombre (A–Z)','sort.za':'Nombre (Z–A)','sort.activity':'Novedades recientes','sort.records':'Más registros','sort.checked':'Comprobados hace más tiempo','sort.added':'Añadidos recientemente',
+  'side.group':'Agrupar por inicial','side.group.tip':'Disponible al ordenar por nombre','side.collapse':'Contraer','side.expand':'Expandir','side.count':'{0} de {1}','side.none':'Ningún compositor encontrado.',
+  'filter.all':'Todos','filter.new':'Nuevos (7 días)','filter.pending':'Con pendientes',
   'tab.composers':'Compositores','tab.new':'Nuevos','tab.history':'Historial','tab.settings':'Ajustes',
   'notif.enable':'🔔 Activar avisos','notif.active':'🔔 Avisos activos','notif.title':'Avisos del navegador cuando aparezca un registro nuevo','notif.body':'{0} nuevo(s) registro(s) encontrado(s)',
   'scan.all':'Comprobar todos ahora','reload.all':'Recarga general','reload.all.title':'Recorre todas las páginas de todos los compositores (más lento)',
@@ -277,6 +310,7 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
   document.querySelectorAll('[data-i18n-title]').forEach(e => e.title = t(e.dataset.i18nTitle));
+  document.querySelectorAll('[data-i18n-aria]').forEach(e => e.setAttribute('aria-label', t(e.dataset.i18nAria)));
   $('#lang').value = lang;
 }
 // mensagens do histórico chegam como "chave|arg|arg"
@@ -311,7 +345,20 @@ async function api(path, method = 'GET', body) {
 
 /* ---------------- estado ---------------- */
 const S = { view: 'comp', composers: [], selected: null, q: '', kind: 'credit', onlyNew: false, hideRemoved: false, withId: null,
-            sort: 'date', dir: 'desc', page: 1, limit: 100, newList: [], lastNewTotal: null, intervalHours: 24 };
+            sort: 'date', dir: 'desc', page: 1, limit: 100, newList: [], lastNewTotal: null, intervalHours: 24,
+            sideQ: '', sideSort: 'az', sideGroup: true, sideFilter: 'all', collapsed: new Set() };
+(function loadSide() {
+  try {
+    const v = JSON.parse(localStorage.getItem('side') || '{}');
+    if (['az', 'za', 'activity', 'records', 'checked', 'added'].includes(v.sort)) S.sideSort = v.sort;
+    if (typeof v.group === 'boolean') S.sideGroup = v.group;
+    if (['all', 'new', 'pending'].includes(v.filter)) S.sideFilter = v.filter;
+    if (Array.isArray(v.collapsed)) S.collapsed = new Set(v.collapsed);
+  } catch {}
+})();
+function saveSide() {
+  try { localStorage.setItem('side', JSON.stringify({ sort: S.sideSort, group: S.sideGroup, filter: S.sideFilter, collapsed: [...S.collapsed] })); } catch {}
+}
 const sel = () => S.composers.find(c => c.id === S.selected);
 
 /* ---------------- tema ---------------- */
@@ -401,21 +448,95 @@ function updateNotifBtn() {
 }
 $('#notifBtn').onclick = async () => { await Notification.requestPermission(); updateNotifBtn(); };
 
-/* ---------------- lista lateral ---------------- */
-function renderList() {
-  $('#list').innerHTML = S.composers.map(c => `
-    <div class="comp ${c.id === S.selected ? 'sel' : ''}" data-id="${c.id}" tabindex="0" role="button">
-      <b>${esc(c.name)}${c.incomplete.length && !c.scanning ? ` <span class="warn mut" title="${esc(t('incomplete.title'))}">⚠ ${t('incomplete.tag')}</span>` : ''}</b>
+/* ---------------- lista lateral: busca, ordenação, filtros e grupos por inicial ---------------- */
+const foldJs = x => (x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const initialOf = name => { const ch = foldJs(name)[0] || '#'; return /[a-z]/.test(ch) ? ch.toUpperCase() : '#'; };
+const isRecentNew = c => c.last_new_at && Date.now() / 1000 - c.last_new_at < 7 * 86400;
+const needsAttention = c => c.incomplete.length > 0 || !!c.last_error;
+const byName = (x, y) => x.name.localeCompare(y.name, loc(), { sensitivity: 'base' });
+
+function sideItems() {
+  const q = foldJs(S.sideQ);
+  let items = S.composers.map(c => {
+    if (!q) return { c, via: null };
+    if (foldJs(c.name).includes(q)) return { c, via: null };
+    const m = c.terms.find(x => foldJs(x.term).includes(q)); // achou por um alias
+    return m ? { c, via: m.term } : null;
+  }).filter(Boolean);
+  if (S.sideFilter === 'new') items = items.filter(i => isRecentNew(i.c));
+  if (S.sideFilter === 'pending') items = items.filter(i => needsAttention(i.c));
+  const cmp = {
+    az: byName, za: (x, y) => byName(y, x),
+    activity: (x, y) => (y.last_new_at || 0) - (x.last_new_at || 0) || byName(x, y),
+    records: (x, y) => y.total - x.total || byName(x, y),
+    checked: (x, y) => (x.last_ok_at || 0) - (y.last_ok_at || 0) || byName(x, y), // nunca verificados primeiro
+    added: (x, y) => y.created_at - x.created_at || byName(x, y),
+  }[S.sideSort];
+  return items.sort((x, y) => cmp(x.c, y.c));
+}
+function itemHtml({ c, via }) {
+  return `<div class="comp ${c.id === S.selected ? 'sel' : ''}" data-id="${c.id}" tabindex="0" role="button">
+      <b>${esc(c.name)}${isRecentNew(c) ? `<span class="badge">${t('badge.new')}</span>` : ''}${needsAttention(c) && !c.scanning ? ` <span class="warn mut" title="${esc(t('incomplete.title'))}">⚠</span>` : ''}</b>
+      ${via ? `<span class="mut">↳ ${esc(via)}</span><br>` : ''}
       <span class="mut">${t('comp.records', c.total)} · ${c.scanning ? t('comp.scanning') : t('comp.checked', ago(c.last_ok_at))}</span>${progBar(c.scanning)}
       ${c.last_error ? `<div class="err mut">${esc(c.last_error)}</div>` : ''}
-    </div>`).join('') || `<p class="mut">${t('list.empty')}</p>`;
+    </div>`;
+}
+function renderSideControls() {
+  const f = ['all', 'new', 'pending'];
+  $('#sideFilters').innerHTML = f.map(k => `<span class="chip btn ${S.sideFilter === k ? 'on' : ''}" data-filter="${k}" role="button" tabindex="0">${t('filter.' + k)}</span>`).join('');
+  $('#sideSort').value = S.sideSort;
+  const nameSort = S.sideSort === 'az' || S.sideSort === 'za';
+  $('#sideGroup').checked = S.sideGroup; $('#sideGroup').disabled = !nameSort;
+  $('#sideGroupLbl').style.opacity = nameSort ? 1 : .5;
+  $('#sideCollapse').hidden = $('#sideExpand').hidden = !(nameSort && S.sideGroup);
+}
+function renderList() {
+  renderSideControls();
+  const items = sideItems();
+  const searching = !!foldJs(S.sideQ);
+  const grouped = S.sideGroup && (S.sideSort === 'az' || S.sideSort === 'za');
+  $('#sideCount').textContent = t('side.count', items.length, S.composers.length);
+  let html;
+  if (!items.length) html = `<p class="mut">${S.composers.length ? t('side.none') : t('list.empty')}</p>`;
+  else if (!grouped) html = items.map(itemHtml).join('');
+  else {
+    const groups = new Map();
+    for (const it of items) { const g = initialOf(it.c.name); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(it); }
+    html = [...groups].map(([g, list]) => {
+      const closed = !searching && S.collapsed.has(g);
+      // grupo recolhido ainda mostra o compositor selecionado, para você não se perder
+      const shown = closed ? list.filter(i => i.c.id === S.selected) : list;
+      return `<div class="grp" data-grp="${g}" role="button" tabindex="0" aria-expanded="${!closed}"><span>${closed ? '▸' : '▾'} ${g}</span><span class="n">${list.length}</span></div>${shown.map(itemHtml).join('')}`;
+    }).join('');
+  }
+  $('#list').innerHTML = html;
   const pending = S.composers.filter(c => c.incomplete.length && !c.scanning).length;
   const busy = S.composers.some(c => c.scanning);
   $('#resumeAll').hidden = !pending || busy;
   $('#resumeAll').textContent = `${t('resume.all')} (${pending})`;
 }
-$('#list').onclick = e => { const el = e.target.closest('.comp'); if (el) select(+el.dataset.id); };
-$('#list').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { const el = e.target.closest('.comp'); if (el) { e.preventDefault(); select(+el.dataset.id); } } };
+function toggleGroup(g) { if (S.collapsed.has(g)) S.collapsed.delete(g); else S.collapsed.add(g); saveSide(); renderList(); }
+$('#list').onclick = e => {
+  const grp = e.target.closest('.grp'); if (grp) return toggleGroup(grp.dataset.grp);
+  const el = e.target.closest('.comp'); if (el) select(+el.dataset.id);
+};
+$('#list').onkeydown = e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const grp = e.target.closest('.grp'); if (grp) { e.preventDefault(); return toggleGroup(grp.dataset.grp); }
+  const el = e.target.closest('.comp'); if (el) { e.preventDefault(); select(+el.dataset.id); }
+};
+$('#sideQ').addEventListener('input', e => { S.sideQ = e.target.value; renderList(); });
+$('#sideQ').addEventListener('keydown', e => { if (e.key === 'Escape') { e.target.value = ''; S.sideQ = ''; renderList(); } });
+$('#sideSort').onchange = e => { S.sideSort = e.target.value; saveSide(); renderList(); };
+$('#sideGroup').onchange = e => { S.sideGroup = e.target.checked; saveSide(); renderList(); };
+$('#sideFilters').addEventListener('click', e => { const c = e.target.closest('[data-filter]'); if (c) { S.sideFilter = c.dataset.filter; saveSide(); renderList(); } });
+$('#sideCollapse').onclick = () => { S.collapsed = new Set(S.composers.map(c => initialOf(c.name))); saveSide(); renderList(); };
+$('#sideExpand').onclick = () => { S.collapsed.clear(); saveSide(); renderList(); };
+// "/" foca a busca de compositores (fora de campos de texto)
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !dlg.open) { e.preventDefault(); setView('comp'); $('#sideQ').focus(); }
+});
 
 function select(id) {
   S.selected = id; S.page = 1; S.q = ''; S.withId = null; S.detailSig = null; connSig = '';
@@ -532,8 +653,8 @@ $('#detail').addEventListener('click', async e => {
   else if (d.monitor) openDialog('create', d.monitor);
   else if (d.act === 'clearwith') { S.withId = null; S.page = 1; connSig = ''; loadConnections(); loadSongs(); }
   else if (d.act === 'edit') openDialog('edit');
-  else if (d.act === 'scan' || d.act === 'resume') { await api(`/composers/${id}/scan`, 'POST'); }
-  else if (d.act === 'reload') { if (confirm(t('confirm.reload'))) await api(`/composers/${id}/scan?full=1`, 'POST'); }
+  else if (d.act === 'scan' || d.act === 'resume') await act(`/composers/${id}/scan`, d.act === 'scan' ? 'toast.scan' : 'toast.resume');
+  else if (d.act === 'reload') { if (confirm(t('confirm.reload'))) await act(`/composers/${id}/scan?full=1`, 'toast.reload'); }
   else if (d.act === 'del') { if (confirm(t('confirm.delete'))) { await api('/composers/' + id, 'DELETE'); S.selected = null; await refresh(); buildDetail(); } }
 });
 $('#newBody').addEventListener('click', e => { const a = e.target.closest('[data-goto]'); if (a) { e.preventDefault(); select(+a.dataset.goto); } });
@@ -601,9 +722,10 @@ $('#dlgForm').addEventListener('submit', async e => {
 $('#addBtn').onclick = () => openDialog('create');
 
 /* ---------------- ações do cabeçalho ---------------- */
-$('#scanAll').onclick = () => api('/scan', 'POST');
-$('#resumeAll').onclick = () => api('/scan', 'POST');
-$('#reloadAll').onclick = () => { if (confirm(t('confirm.reload.all'))) api('/scan?full=1', 'POST'); };
+async function act(path, key) { try { await api(path, 'POST'); toast(t(key)); refresh(); } catch {} }
+$('#scanAll').onclick = () => act('/scan', 'toast.scan');
+$('#resumeAll').onclick = () => act('/scan', 'toast.resume');
+$('#reloadAll').onclick = () => { if (confirm(t('confirm.reload.all'))) act('/scan?full=1', 'toast.reload'); };
 $('#lang').onchange = e => {
   lang = e.target.value; try { localStorage.setItem('lang', lang); } catch {}
   applyI18n(); updateNotifBtn(); S.detailSig = null; connSig = ''; renderList(); if (sel()) buildDetail();
