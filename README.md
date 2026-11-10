@@ -12,7 +12,13 @@ Escrito em Rust (axum + SQLite embutido), sem dependências externas em tempo de
 - **Carga inicial completa** — ao adicionar um compositor, busca todas as páginas de resultados e
   guarda tudo, ordenado do mais novo para o mais antigo (igual ao site).
 - **Verificação automática a cada 24h** para todos os compositores. Se o programa ficou fechado,
-  verifica assim que abrir; falhas são retentadas depois de 1h.
+  verifica assim que abrir; falhas são retentadas depois de 1h. A verificação normal é leve: para na
+  primeira página que não traz nada novo.
+- **Retomada de carregamentos** — cada página é salva assim que chega. Se a carga for interrompida
+  (programa fechado, queda de rede, erro do site), ela continua de onde parou: automaticamente ao abrir o
+  programa e também pelo botão **Continuar carregamento** (ou **Continuar pendentes**, no cabeçalho).
+- **Recarregamento geral** — percorre todas as páginas de um compositor (ou de todos) e atualiza todos os
+  campos dos registros (ex.: quantidade de uploads). Registros ainda desconhecidos continuam sendo marcados como novos.
 - **Aliases** — vários nomes para o mesmo compositor (ex.: *Lady Gaga* e *Stefani Germanotta*). Os
   resultados são consolidados sem duplicar músicas. Também dá para **unir** dois compositores já cadastrados.
 - **Nomes só visuais** — exibe um nome (ex.: *Tinashe*) sem buscá-lo no site, para evitar resultados de
@@ -55,7 +61,9 @@ O servidor escuta apenas em `127.0.0.1` (não fica acessível pela rede). Para b
    página, com pausa entre requisições). O HTML é lido e as músicas são guardadas pelo ID de catálogo.
 3. Na primeira varredura de um nome, tudo é carga inicial. Nas seguintes, qualquer ID ainda desconhecido
    é registrado como **novo**.
-4. Se o site responder com total > 0 mas nenhuma linha reconhecível, a varredura falha com erro
+4. Cada página é gravada com um checkpoint (`resume_page`). Ao retomar, o programa volta uma página para
+   compensar deslocamentos no site; duplicatas são ignoradas.
+5. Se o site responder com total > 0 mas nenhuma linha reconhecível, a varredura falha com erro
    explícito (indício de mudança de layout) em vez de gravar dados incorretos.
 
 ## API (usada pela página)
@@ -67,9 +75,9 @@ O servidor escuta apenas em `127.0.0.1` (não fica acessível pela rede). Para b
 | `POST /api/composers/:id/aliases`     | Adicionar alias (`{alias, visual}`)     |
 | `DELETE /api/aliases/:id`             | Remover alias                           |
 | `POST /api/composers/:id/merge`       | Unir em outro compositor (`{into}`)     |
-| `POST /api/composers/:id/scan`        | Verificar agora                         |
+| `POST /api/composers/:id/scan`        | Verificar agora / continuar carga (`?full=1` recarrega tudo) |
 | `GET /api/composers/:id/songs`        | Registros (`credits_only`, `new_only`)  |
-| `POST /api/scan`                      | Verificar todos                         |
+| `POST /api/scan`                      | Verificar todos (`?full=1` recarregamento geral) |
 | `GET /api/new`                        | Histórico de registros novos            |
 | `GET /api/log`                        | Log das verificações                    |
 
