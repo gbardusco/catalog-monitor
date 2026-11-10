@@ -1,0 +1,17 @@
+[Unit]
+Description=Catalog Monitor (monitor de registros do ArrangeMe)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/catalog-monitor
+Environment=CATALOG_DB=%h/.local/share/catalog-monitor/catalog.db
+Environment=PORT=8787
+# necessário para o notify-send (aviso de desktop) funcionar a partir do serviço
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
