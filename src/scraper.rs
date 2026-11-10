@@ -4,7 +4,7 @@ use std::time::Duration;
 use unicode_normalization::UnicodeNormalization;
 
 const BASE: &str = "https://www.arrangeme.com/search";
-const PAGE_SIZE: usize = 50;
+pub const PAGE_SIZE: usize = 50;
 const MAX_PAGES: usize = 100;
 
 #[derive(Debug, Clone)]
@@ -128,38 +128,32 @@ async fn fetch(client: &reqwest::Client, term: &str, page: usize) -> Result<Stri
     Err(format!("fetch failed for \"{term}\" (page {page}): {last}"))
 }
 
-/// Busca todas as páginas de resultados para um termo, do mais novo ao mais velho.
-pub async fn search_all(
+/// Percorre as páginas de resultados de um termo (do mais novo ao mais velho) a partir de
+/// `start_page`. A cada página chama `on_page(página, total_no_site, linhas)`; se devolver
+/// `Ok(false)` a busca para (usado para parar cedo quando nada de novo aparece).
+pub async fn search_pages(
     client: &reqwest::Client,
     term: &str,
-    on_progress: &(dyn Fn(usize, usize) + Send + Sync),
-) -> Result<Vec<Song>, String> {
-    let mut all: Vec<Song> = Vec::new();
-    let mut total_expected: Option<usize> = None;
-    for page in 1..=MAX_PAGES {
+    start_page: usize,
+    on_page: &mut (dyn FnMut(usize, usize, &[Song]) -> Result<bool, String> + Send),
+) -> Result<(), String> {
+    for page in start_page.max(1)..=MAX_PAGES {
         let html = fetch(client, term, page).await?;
         let (total, songs) = parse_page(&html);
-        if page == 1 {
-            total_expected = total;
-            if total.unwrap_or(0) > 0 && songs.is_empty() {
+        let total = total.unwrap_or(0);
+        if songs.is_empty() {
+            if total > 0 && (page - 1) * PAGE_SIZE < total {
                 return Err("site layout changed: total > 0 but no rows found".into());
             }
-        }
-        if songs.is_empty() {
             break;
         }
-        for s in songs {
-            if !all.iter().any(|x| x.catalog_id == s.catalog_id) {
-                all.push(s);
-            }
+        if !on_page(page, total, &songs)? {
+            break;
         }
-        on_progress(all.len(), total_expected.unwrap_or(all.len()));
-        if let Some(t) = total_expected {
-            if all.len() >= t || all.len() >= page * PAGE_SIZE && page * PAGE_SIZE >= t {
-                break;
-            }
+        if total > 0 && page * PAGE_SIZE >= total {
+            break;
         }
         tokio::time::sleep(Duration::from_millis(1200)).await;
     }
-    Ok(all)
+    Ok(())
 }
