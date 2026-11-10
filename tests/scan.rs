@@ -458,3 +458,57 @@ async fn webhook_generico_recebe_novos_e_segredos_nao_vazam() {
     assert!(body.contains("\"webhook\":true"));
     assert!(!body.contains(&hook_url));
 }
+
+#[tokio::test]
+async fn novos_sao_paginados_e_contam_nao_vistos() {
+    let (app, st) = setup().await;
+    st.lock()
+        .unwrap()
+        .data
+        .insert("dua lipa".into(), songs(1..=10, "Dua Lipa"));
+    let id = add(&app, "Dua Lipa", &[]);
+    scan::scan_composer(&app, id, false, "manual")
+        .await
+        .unwrap();
+    // 120 músicas novas no topo
+    st.lock()
+        .unwrap()
+        .data
+        .insert("dua lipa".into(), songs(1..=130, "Dua Lipa"));
+    scan::scan_composer(&app, id, false, "auto").await.unwrap();
+    assert_eq!(count(&app, "SELECT COUNT(*) FROM hits WHERE is_new=1"), 120);
+
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let get = |uri: &'static str| {
+        let r = api::router(app.clone());
+        async move {
+            let resp = r
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .header("host", "localhost")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let b = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            serde_json::from_slice::<serde_json::Value>(&b).unwrap()
+        }
+    };
+    let p1 = get("/api/new?page=1&limit=50&since=0").await;
+    assert_eq!(p1["total"], 120);
+    assert_eq!(p1["unseen"], 120);
+    assert_eq!(p1["items"].as_array().unwrap().len(), 50);
+    let p3 = get("/api/new?page=3&limit=50").await;
+    assert_eq!(p3["items"].as_array().unwrap().len(), 20); // 120 = 50 + 50 + 20
+    let p4 = get("/api/new?page=4&limit=50").await;
+    assert!(p4["items"].as_array().unwrap().is_empty());
+    // tudo achado antes de "since" já foi visto
+    let future = get("/api/new?limit=1&since=99999999999").await;
+    assert_eq!(future["unseen"], 0);
+    assert_eq!(future["total"], 120);
+}
