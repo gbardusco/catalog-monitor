@@ -30,6 +30,10 @@ Escrito em Rust (axum + SQLite embutido). Sem dependências externas em tempo de
 
 **Uso diário**
 - **Popup** para cadastrar e editar compositores e seus nomes.
+- **Barra lateral para muitos compositores** — busca por nome **ou alias** (sem distinguir acentos nem
+  maiúsculas; tecla `/` foca a busca), ordenação (A–Z, Z–A, novidades recentes, mais registros, verificados
+  há mais tempo, adicionados recentemente), **grupos por inicial recolhíveis** (o compositor selecionado
+  nunca some), filtros "Novos (7 dias)" e "Com pendência". As preferências ficam salvas no navegador.
 - **Tabela** com busca, ordenação, paginação, filtros por tipo de match, "só novos" e "esconder removidos".
 - **Conexões entre registros** — nomes nos créditos que são compositores monitorados viram links; painel
   com **músicas em comum** (clique para filtrar) e **co-autores frequentes** com botão "monitorar".
