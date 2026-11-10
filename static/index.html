@@ -56,7 +56,8 @@
   .err { color:var(--err) } a { color:var(--acc); text-decoration:none } a:hover { text-decoration:underline }
   h2 { margin:0 0 6px; font-size:18px } h3 { margin:14px 0 6px; font-size:14px }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0 }
-  .pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:10px }
+  .pager { display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; margin:8px 0 }
+  .pager button { min-width:32px; padding:3px 8px } .pager input[type=number] { width:64px }
   dialog { border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--fg); padding:16px; width:min(560px,92vw) }
   dialog::backdrop { background:rgba(0,0,0,.45) }
   .item { display:flex; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid var(--line) }
@@ -171,6 +172,7 @@
 const $ = s => document.querySelector(s);
 const I18N = {
 pt: {
+  'pager.first':'Primeira página','pager.last':'Última página','pager.goto':'Ir para','new.total':'{0} registro(s) novo(s) no total',
   'toast.scan':'Verificação iniciada.','toast.resume':'Carregamento retomado.','toast.reload':'Recarregamento iniciado. Acompanhe a barra de progresso.',
   'side.search':'Buscar compositor ou alias…','side.sort':'Ordenar compositores','sort.az':'Nome (A–Z)','sort.za':'Nome (Z–A)','sort.activity':'Novidades recentes','sort.records':'Mais registros','sort.checked':'Verificados há mais tempo','sort.added':'Adicionados recentemente',
   'side.group':'Agrupar por inicial','side.group.tip':'Disponível ao ordenar por nome','side.collapse':'Recolher','side.expand':'Expandir','side.count':'{0} de {1}','side.none':'Nenhum compositor encontrado.',
@@ -195,7 +197,7 @@ pt: {
   'kind.credit.tip':'O nome inteiro consta nos créditos','kind.artist.tip':'O nome aparece na coluna Artista','kind.title.tip':'O nome aparece no título','kind.none.tip':'A busca do site trouxe, mas o nome não aparece como compositor',
   'col.added':'Adicionado','col.title':'Título','col.credits':'Créditos','col.artist':'Artista / Show','col.match':'Match','col.uploads':'Upl.',
   'badge.new':'novo','badge.removed':'removido do site','summary':'{0} registro(s) · último check {1} (automático a cada {2}h)',
-  'pager.info':'Página {0} de {1}','pager.prev':'‹ Anterior','pager.next':'Próxima ›','pager.size':'por página',
+  'pager.prev':'‹ Anterior','pager.next':'Próxima ›','pager.size':'por página',
   'export.csv':'CSV','export.json':'JSON','empty.table':'Nenhum registro com esses filtros.',
   'dlg.create':'Novo compositor','dlg.edit':'Editar nomes','dlg.help':'Escolha o nome em destaque (⭐). Nomes marcados como "só visual" aparecem na tela mas não são buscados no site — útil para nomes ambíguos (ex.: "Tinashe").',
   'dlg.new.ph':'Adicionar nome (ex.: nome verdadeiro)…','dlg.add':'+ nome','dlg.cancel':'Cancelar','dlg.save':'Salvar e carregar','dlg.close':'Fechar','dlg.featured':'Destaque','dlg.visual':'só visual','dlg.remove':'Remover',
@@ -213,6 +215,7 @@ pt: {
   'err.invalid_setting':'Configuração inválida.','err.forbidden':'Acesso negado.','err.internal':'Erro interno.',
   'scan.initial':'"{0}": {1} registros (carga inicial)','scan.incremental':'"{0}": {1} registros verificados, {2} novo(s)','scan.error':'ERRO: {0}','scan.removed':'{0} registro(s) não estão mais no site','notify.failed':'aviso por {0} falhou: {1}'},
 en: {
+  'pager.first':'First page','pager.last':'Last page','pager.goto':'Go to','new.total':'{0} new record(s) in total',
   'toast.scan':'Check started.','toast.resume':'Loading resumed.','toast.reload':'Full reload started. Follow the progress bar.',
   'side.search':'Search composer or alias…','side.sort':'Sort composers','sort.az':'Name (A–Z)','sort.za':'Name (Z–A)','sort.activity':'Recent finds','sort.records':'Most records','sort.checked':'Longest since checked','sort.added':'Recently added',
   'side.group':'Group by initial','side.group.tip':'Available when sorting by name','side.collapse':'Collapse','side.expand':'Expand','side.count':'{0} of {1}','side.none':'No composers found.',
@@ -237,7 +240,7 @@ en: {
   'kind.credit.tip':'The full name is in the credits','kind.artist.tip':'The name appears in the Artist column','kind.title.tip':'The name appears in the title','kind.none.tip':'The site search returned it, but the name is not a credited writer',
   'col.added':'Added','col.title':'Title','col.credits':'Credits','col.artist':'Artist / Show','col.match':'Match','col.uploads':'Upl.',
   'badge.new':'new','badge.removed':'removed from site','summary':'{0} record(s) · last check {1} (automatic every {2}h)',
-  'pager.info':'Page {0} of {1}','pager.prev':'‹ Previous','pager.next':'Next ›','pager.size':'per page',
+  'pager.prev':'‹ Previous','pager.next':'Next ›','pager.size':'per page',
   'export.csv':'CSV','export.json':'JSON','empty.table':'No records match these filters.',
   'dlg.create':'New composer','dlg.edit':'Edit names','dlg.help':'Pick the featured name (⭐). Names marked "display only" show up on screen but are not searched on the site — handy for ambiguous names (e.g. "Tinashe").',
   'dlg.new.ph':'Add name (e.g. real name)…','dlg.add':'+ name','dlg.cancel':'Cancel','dlg.save':'Save and load','dlg.close':'Close','dlg.featured':'Featured','dlg.visual':'display only','dlg.remove':'Remove',
@@ -255,6 +258,7 @@ en: {
   'err.invalid_setting':'Invalid setting.','err.forbidden':'Access denied.','err.internal':'Internal error.',
   'scan.initial':'"{0}": {1} records (initial load)','scan.incremental':'"{0}": {1} records checked, {2} new','scan.error':'ERROR: {0}','scan.removed':'{0} record(s) are no longer on the site','notify.failed':'alert via {0} failed: {1}'},
 es: {
+  'pager.first':'Primera página','pager.last':'Última página','pager.goto':'Ir a','new.total':'{0} registro(s) nuevo(s) en total',
   'toast.scan':'Comprobación iniciada.','toast.resume':'Carga reanudada.','toast.reload':'Recarga iniciada. Sigue la barra de progreso.',
   'side.search':'Buscar compositor o alias…','side.sort':'Ordenar compositores','sort.az':'Nombre (A–Z)','sort.za':'Nombre (Z–A)','sort.activity':'Novedades recientes','sort.records':'Más registros','sort.checked':'Comprobados hace más tiempo','sort.added':'Añadidos recientemente',
   'side.group':'Agrupar por inicial','side.group.tip':'Disponible al ordenar por nombre','side.collapse':'Contraer','side.expand':'Expandir','side.count':'{0} de {1}','side.none':'Ningún compositor encontrado.',
@@ -279,7 +283,7 @@ es: {
   'kind.credit.tip':'El nombre completo figura en los créditos','kind.artist.tip':'El nombre aparece en la columna Artista','kind.title.tip':'El nombre aparece en el título','kind.none.tip':'La búsqueda del sitio lo devolvió, pero el nombre no figura como autor',
   'col.added':'Añadido','col.title':'Título','col.credits':'Créditos','col.artist':'Artista / Show','col.match':'Coincidencia','col.uploads':'Subid.',
   'badge.new':'nuevo','badge.removed':'eliminado del sitio','summary':'{0} registro(s) · última comprobación {1} (automática cada {2} h)',
-  'pager.info':'Página {0} de {1}','pager.prev':'‹ Anterior','pager.next':'Siguiente ›','pager.size':'por página',
+  'pager.prev':'‹ Anterior','pager.next':'Siguiente ›','pager.size':'por página',
   'export.csv':'CSV','export.json':'JSON','empty.table':'Ningún registro con estos filtros.',
   'dlg.create':'Nuevo compositor','dlg.edit':'Editar nombres','dlg.help':'Elige el nombre destacado (⭐). Los nombres "solo visual" se muestran en pantalla pero no se buscan en el sitio — útil para nombres ambiguos (p. ej., "Tinashe").',
   'dlg.new.ph':'Añadir nombre (p. ej., nombre real)…','dlg.add':'+ nombre','dlg.cancel':'Cancelar','dlg.save':'Guardar y cargar','dlg.close':'Cerrar','dlg.featured':'Destacado','dlg.visual':'solo visual','dlg.remove':'Quitar',
@@ -345,7 +349,7 @@ async function api(path, method = 'GET', body) {
 
 /* ---------------- estado ---------------- */
 const S = { view: 'comp', composers: [], selected: null, q: '', kind: 'credit', onlyNew: false, hideRemoved: false, withId: null,
-            sort: 'date', dir: 'desc', page: 1, limit: 100, newList: [], lastNewTotal: null, intervalHours: 24,
+            sort: 'date', dir: 'desc', page: 1, limit: 100, newPage: 1, newLimit: 50, newTotal: 0, newUnseen: 0, newSig: null, lastNewTotal: null, intervalHours: 24,
             sideQ: '', sideSort: 'az', sideGroup: true, sideFilter: 'all', collapsed: new Set() };
 (function loadSide() {
   try {
@@ -395,17 +399,16 @@ function progBar(p) {
 /* ---------------- novos (contador sem botões de "lido") ---------------- */
 const getSeen = () => { try { return +localStorage.getItem('newSeenAt') || 0; } catch { return 0; } };
 const setSeen = v => { try { localStorage.setItem('newSeenAt', v); } catch {} };
-function markNewSeen() { setSeen(Math.floor(Date.now() / 1000)); updateNewIndicators(); }
+function markNewSeen() { setSeen(Math.floor(Date.now() / 1000)); S.newUnseen = 0; updateNewIndicators(); }
 function updateNewIndicators() {
-  const seenAt = S.view === 'new' ? Math.floor(Date.now() / 1000) : getSeen();
-  const n = S.newList.filter(s => s.found_at > seenAt).length;
+  const n = S.view === 'new' ? 0 : (S.newUnseen || 0);
   $('#newCount').textContent = n; $('#newCount').hidden = !n;
   document.title = (n ? `(${n}) ` : '') + 'Catalog Monitor';
-  if (S.lastNewTotal !== null && S.newList.length > S.lastNewTotal && 'Notification' in window && Notification.permission === 'granted') {
-    const note = new Notification('Catalog Monitor', { body: t('notif.body', S.newList.length - S.lastNewTotal) });
+  if (S.lastNewTotal !== null && S.newTotal > S.lastNewTotal && 'Notification' in window && Notification.permission === 'granted') {
+    const note = new Notification('Catalog Monitor', { body: t('notif.body', S.newTotal - S.lastNewTotal) });
     note.onclick = () => { window.focus(); setView('new'); };
   }
-  S.lastNewTotal = S.newList.length;
+  S.lastNewTotal = S.newTotal;
 }
 const sel_name = id => (S.composers.find(c => c.id === id) || {}).name || '';
 function creditsHtml(links, selfId) {
@@ -416,16 +419,69 @@ function creditsHtml(links, selfId) {
 const kindBadge = k => `<span class="badge kind-${k}" title="${esc(t('kind.' + k + '.tip'))}">${t('kind.' + k)}</span>`;
 
 async function loadNew() {
-  S.newList = await api('/new');
+  const viewing = S.view === 'new';
   try { if (localStorage.getItem('newSeenAt') === null) setSeen(Math.floor(Date.now() / 1000)); } catch {}
+  // fora da aba só precisamos dos contadores (limit=1); na aba, a página pedida
+  const q = new URLSearchParams({ page: viewing ? S.newPage : 1, limit: viewing ? S.newLimit : 1, since: getSeen() });
+  const d = await api('/new?' + q);
+  S.newTotal = d.total; S.newUnseen = d.unseen;
   updateNewIndicators();
-  if (S.view !== 'new') return;
-  $('#newBody').innerHTML = S.newList.length
-    ? `<table><thead><tr><th>${t('new.found')}</th><th>${t('new.composer')}</th><th>${t('col.title')}</th><th>${t('col.credits')}</th><th>${t('col.match')}</th><th>${t('new.since')}</th></tr></thead><tbody>` +
-      S.newList.map(s => `<tr class="${s.kind === 'credit' ? '' : 'dim'}"><td>${fmt(s.found_at)}</td><td><a href="#" data-goto="${s.composer_id}">${esc(s.composer)}</a></td>
-        <td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></td><td>${creditsHtml(s.credit_links, s.composer_id)}</td><td>${kindBadge(s.kind)}</td><td>${esc(s.date_added)}</td></tr>`).join('') + '</tbody></table>'
+  if (!viewing) return;
+  const pages = Math.max(1, Math.ceil(d.total / d.limit));
+  if (S.newPage > pages) { S.newPage = pages; return loadNew(); }
+  const sig = JSON.stringify([d, lang]);
+  if (sig === S.newSig) return; // nada mudou: não redesenha (preserva o campo "ir para")
+  S.newSig = sig;
+  $('#newBody').innerHTML = d.items.length
+    ? `<div class="pager" id="newPagerTop"></div><table><thead><tr><th>${t('new.found')}</th><th>${t('new.composer')}</th><th>${t('col.title')}</th><th>${t('col.credits')}</th><th>${t('col.match')}</th><th>${t('new.since')}</th></tr></thead><tbody>` +
+      d.items.map(s => `<tr class="${s.kind === 'credit' ? '' : 'dim'}"><td>${fmt(s.found_at)}</td><td><a href="#" data-goto="${s.composer_id}">${esc(s.composer)}</a></td>
+        <td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></td><td>${creditsHtml(s.credit_links, s.composer_id)}</td><td>${kindBadge(s.kind)}</td><td>${esc(s.date_added)}</td></tr>`).join('') +
+      `</tbody></table><div class="pager" id="newPagerBot"></div><div class="mut">${t('new.total', d.total)}</div>`
     : `<p class="mut">${t('new.empty')}</p>`;
+  renderPager($('#newPagerTop'), 'new', S.newPage, pages, d.total, S.newLimit);
+  renderPager($('#newPagerBot'), 'new', S.newPage, pages, d.total, S.newLimit);
 }
+
+/* ---------------- paginador reutilizável (tabela do compositor e aba Novos) ---------------- */
+function pageWindow(page, pages) { // [1, '…', 4, 5, 6, 7, 8, '…', 20]
+  const set = new Set([1, pages]);
+  for (let p = page - 2; p <= page + 2; p++) if (p >= 1 && p <= pages) set.add(p);
+  const arr = [...set].sort((x, y) => x - y), out = [];
+  arr.forEach((p, i) => { if (i && p - arr[i - 1] > 1) out.push('…'); out.push(p); });
+  return out;
+}
+// só redesenha se algo mudou, para não apagar o número digitado em "ir para"
+function renderPager(el, scope, page, pages, total, limit) {
+  if (!el) return;
+  const sig = JSON.stringify([scope, page, pages, total, limit, lang]);
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  const b = (p, label, dis, title) => `<button data-pg="${scope}:${p}" ${dis ? 'disabled' : ''} title="${esc(title)}" aria-label="${esc(title)}">${label}</button>`;
+  const nums = pageWindow(page, pages).map(p => p === '…' ? '<span class="mut">…</span>'
+    : `<button data-pg="${scope}:${p}" class="${p === page ? 'pri' : ''}" ${p === page ? 'aria-current="page"' : ''}>${p}</button>`).join('');
+  el.innerHTML = `<select data-size="${scope}" aria-label="${esc(t('pager.size'))}">${[25, 50, 100, 200, 500].map(n => `<option value="${n}" ${n === limit ? 'selected' : ''}>${n} ${t('pager.size')}</option>`).join('')}</select>
+    ${b(1, '«', page <= 1, t('pager.first'))}${b(page - 1, '‹', page <= 1, t('pager.prev'))}${nums}${b(page + 1, '›', page >= pages, t('pager.next'))}${b(pages, '»', page >= pages, t('pager.last'))}
+    <label class="mut">${t('pager.goto')} <input type="number" min="1" max="${pages}" value="${page}" data-gopage="${scope}"></label>`;
+}
+function setPage(scope, p) {
+  if (scope === 'comp') { S.page = Math.max(1, p); loadSongs().then(() => { const el = $('#dTop'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }); }
+  else if (scope === 'new') { S.newPage = Math.max(1, p); loadNew(); }
+}
+function setSize(scope, n) {
+  if (scope === 'comp') { S.limit = n; S.page = 1; loadSongs(); } else if (scope === 'new') { S.newLimit = n; S.newPage = 1; loadNew(); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-pg]'); if (!b || b.disabled) return;
+  const [scope, p] = b.dataset.pg.split(':'); setPage(scope, +p);
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset) return;
+  if (el.dataset.size) setSize(el.dataset.size, +el.value);
+  else if (el.dataset.gopage) setPage(el.dataset.gopage, Math.min(+el.max || 1, Math.max(1, +el.value || 1)));
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.dataset && e.target.dataset.gopage) { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
+});
 
 /* ---------------- histórico (runs) ---------------- */
 async function loadHist() {
@@ -557,8 +613,11 @@ function buildDetail() {
       <label><input type="checkbox" id="fRem" ${S.hideRemoved ? 'checked' : ''}> ${t('f.hideRemoved')}</label>
     </div>
     <div id="fWith"></div>
+    <div id="dTop"></div>
+    <div class="pager" id="dPagerTop"></div>
     <div class="tablewrap" id="dTable"></div>
     <div class="pager" id="dPager"></div>
+    <div class="mut" id="dSum"></div>
     <details id="dConn" open><summary><b>${t('conn.title')}</b></summary><div id="dConnBody"></div></details>
     ${others.length ? `<div class="bar"><select id="mergeSel"><option value="">${esc(t('btn.merge'))}</option>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></div>` : ''}`;
   renderKinds(); renderHead(); loadSongs(); loadConnections();
@@ -608,12 +667,9 @@ async function loadSongs() {
         ${s.also.map(a => `<a href="#" class="chip btn" data-goto="${a.id}" title="${esc(a.name)}">↔ ${esc(a.name)}</a>`).join('')}</td>
       <td>${creditsHtml(s.credit_links, c.id)}</td><td>${esc([s.artist, s.show].filter(Boolean).join(' / '))}</td><td>${kindBadge(s.kind)}</td><td>${s.uploads}</td></tr>`).join('') +
     '</tbody></table>' : `<p class="mut">${t('empty.table')}</p>`;
-  const sum = `${t('summary', d.total, ago(c.last_ok_at), S.intervalHours)}`;
-  $('#dPager').innerHTML = `<span class="mut" style="margin-right:auto">${sum}</span>
-    <select id="pSize" aria-label="${esc(t('pager.size'))}">${[50, 100, 200, 500].map(n => `<option value="${n}" ${n === S.limit ? 'selected' : ''}>${n} ${t('pager.size')}</option>`).join('')}</select>
-    <button data-page="${S.page - 1}" ${S.page <= 1 ? 'disabled' : ''}>${t('pager.prev')}</button>
-    <span>${t('pager.info', S.page, pages)}</span>
-    <button data-page="${S.page + 1}" ${S.page >= pages ? 'disabled' : ''}>${t('pager.next')}</button>`;
+  $('#dSum').textContent = t('summary', d.total, ago(c.last_ok_at), S.intervalHours);
+  renderPager($('#dPagerTop'), 'comp', S.page, pages, d.total, S.limit);
+  renderPager($('#dPager'), 'comp', S.page, pages, d.total, S.limit);
   const w = $('#fWith');
   if (w) w.innerHTML = S.withId ? `<span class="chip on">${esc(t('conn.with', sel_name(S.withId)))} <button class="x" data-act="clearwith" style="color:#fff">✕</button></span>` : '';
 }
@@ -635,7 +691,6 @@ $('#detail').addEventListener('change', async e => {
   const el = e.target;
   if (el.id === 'fNew') { S.onlyNew = el.checked; S.page = 1; loadSongs(); }
   else if (el.id === 'fRem') { S.hideRemoved = el.checked; S.page = 1; loadSongs(); }
-  else if (el.id === 'pSize') { S.limit = +el.value; S.page = 1; loadSongs(); }
   else if (el.id === 'mergeSel' && el.value) {
     const into = +el.value, target = S.composers.find(c => c.id === into);
     if (confirm(t('confirm.merge', target.name))) { await api(`/composers/${S.selected}/merge`, 'POST', { into }); S.selected = into; S.detailSig = null; await refresh(); buildDetail(); }
@@ -643,12 +698,11 @@ $('#detail').addEventListener('change', async e => {
   }
 });
 $('#detail').addEventListener('click', async e => {
-  const el = e.target.closest('[data-act],[data-sort],[data-kind],[data-page],[data-with],[data-monitor],[data-goto]'); if (!el) return;
+  const el = e.target.closest('[data-act],[data-sort],[data-kind],[data-with],[data-monitor],[data-goto]'); if (!el) return;
   const id = S.selected, d = el.dataset;
   if (d.goto) { e.preventDefault(); select(+d.goto); }
   else if (d.sort) { if (S.sort === d.sort) S.dir = S.dir === 'asc' ? 'desc' : 'asc'; else { S.sort = d.sort; S.dir = d.sort === 'title' ? 'asc' : 'desc'; } S.page = 1; loadSongs(); }
   else if (d.kind) { S.kind = d.kind; S.page = 1; renderKinds(); loadSongs(); }
-  else if (d.page) { S.page = +d.page; loadSongs(); }
   else if (d.with) { S.withId = S.withId === +d.with ? null : +d.with; S.page = 1; connSig = ''; loadConnections(); loadSongs(); }
   else if (d.monitor) openDialog('create', d.monitor);
   else if (d.act === 'clearwith') { S.withId = null; S.page = 1; connSig = ''; loadConnections(); loadSongs(); }
