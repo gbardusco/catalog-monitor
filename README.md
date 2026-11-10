@@ -34,7 +34,10 @@ Escrito em Rust (axum + SQLite embutido). Sem dependências externas em tempo de
   maiúsculas; tecla `/` foca a busca), ordenação (A–Z, Z–A, novidades recentes, mais registros, verificados
   há mais tempo, adicionados recentemente), **grupos por inicial recolhíveis** (o compositor selecionado
   nunca some), filtros "Novos (7 dias)" e "Com pendência". As preferências ficam salvas no navegador.
-- **Tabela** com busca, ordenação, paginação, filtros por tipo de match, "só novos" e "esconder removidos".
+- **Tabela** com busca, ordenação, filtros por tipo de match, "só novos" e "esconder removidos".
+- **Paginação completa** (tabela de cada compositor e aba **Novos**): primeira/anterior/próxima/última, números
+  de página com reticências, "ir para a página" e tamanho da página (25 a 500), no topo e no rodapé.
+  A paginação é feita no servidor, então continua rápida com milhares de registros.
 - **Conexões entre registros** — nomes nos créditos que são compositores monitorados viram links; painel
   com **músicas em comum** (clique para filtrar) e **co-autores frequentes** com botão "monitorar".
 - **Exportação** CSV/JSON (por compositor ou geral) e **feed Atom** dos novos em `/feed.xml`.
