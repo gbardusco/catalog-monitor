@@ -152,6 +152,26 @@ async fn verificacao_normal_para_cedo_e_detecta_novos() {
         ),
         0
     );
+
+    // a lista de compositores expõe quando foi criado e quando apareceu algo novo (ordenação da barra lateral)
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let resp = api::router(app.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/api/composers")
+                .header("host", "localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(v[0]["created_at"].as_i64().unwrap() > 0);
+    assert!(v[0]["last_new_at"].as_i64().unwrap() > 0);
 }
 
 #[tokio::test]
