@@ -57,9 +57,11 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// Deve marcar os registros como avisados? Sim se algo foi enviado ou não há canal nenhum.
+    /// Deve marcar os registros como avisados? Sim se algo foi enviado ou se nenhum canal
+    /// *remoto* falhou. O aviso de desktop é um extra local (pode nem ter `notify-send`):
+    /// falhar sozinho não deve fazer o mesmo registro ser reenviado a cada verificação.
     pub fn delivered(&self) -> bool {
-        !self.sent.is_empty() || self.failed.is_empty()
+        !self.sent.is_empty() || self.failed.iter().all(|(channel, _)| channel == "desktop")
     }
 }
 
@@ -246,4 +248,25 @@ pub async fn dispatch(
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn out(sent: &[&str], failed: &[&str]) -> Outcome {
+        Outcome {
+            sent: sent.iter().map(|s| s.to_string()).collect(),
+            failed: failed.iter().map(|s| (s.to_string(), "x".into())).collect(),
+        }
+    }
+
+    #[test]
+    fn entrega_considera_so_canais_remotos() {
+        assert!(out(&[], &[]).delivered()); // nenhum canal
+        assert!(out(&["discord"], &["telegram"]).delivered()); // algum enviou
+        assert!(out(&[], &["desktop"]).delivered()); // só o desktop falhou (sem notify-send)
+        assert!(!out(&[], &["discord"]).delivered()); // remoto falhou: tenta de novo depois
+        assert!(!out(&[], &["desktop", "ntfy"]).delivered());
+    }
 }
