@@ -50,6 +50,9 @@ fn init_db(c: &Connection) -> rusqlite::Result<()> {
     init_schema(c)?;
     // migração: nomes "só visuais" (não entram na busca nem na checagem de créditos)
     let _ = c.execute("ALTER TABLE terms ADD COLUMN searchable INTEGER NOT NULL DEFAULT 1", []);
+    // retomada: resume_page = próxima página a buscar (0 = nada pendente)
+    let _ = c.execute("ALTER TABLE terms ADD COLUMN resume_page INTEGER NOT NULL DEFAULT 0", []);
+    let _ = c.execute("ALTER TABLE terms ADD COLUMN total_expected INTEGER NOT NULL DEFAULT 0", []);
     Ok(())
 }
 
@@ -110,7 +113,7 @@ fn desktop_notify(composer: &str, titles: &[String]) {
         .spawn();
 }
 
-async fn scan_composer(app: &Arc<App>, id: i64) -> Result<String, String> {
+async fn scan_composer(app: &Arc<App>, id: i64, full: bool) -> Result<String, String> {
     {
         let mut sc = app.scanning.lock().unwrap();
         if sc.contains_key(&id) {
@@ -118,19 +121,38 @@ async fn scan_composer(app: &Arc<App>, id: i64) -> Result<String, String> {
         }
         sc.insert(id, Progress::default());
     }
-    let res = scan_inner(app, id).await;
+    let res = scan_inner(app, id, full).await;
     app.scanning.lock().unwrap().remove(&id);
     res
 }
 
-async fn scan_inner(app: &Arc<App>, id: i64) -> Result<String, String> {
-    let terms: Vec<(i64, String, bool)> = {
+struct TermRow {
+    id: i64,
+    term: String,
+    baselined: bool,
+    resume_page: usize,
+    total_expected: usize,
+}
+
+/// `full` = recarregamento geral: percorre todas as páginas, atualizando todos os campos.
+/// Sem `full`, uma verificação "limpa" para na primeira página sem nenhum registro novo;
+/// uma carga interrompida (resume_page > 0) continua de onde parou.
+async fn scan_inner(app: &Arc<App>, id: i64, full: bool) -> Result<String, String> {
+    let terms: Vec<TermRow> = {
         let db = app.db.lock().unwrap();
         let mut st = db
-            .prepare("SELECT id, term, baselined FROM terms WHERE composer_id=? AND searchable=1 ORDER BY is_primary DESC, id")
+            .prepare("SELECT id, term, baselined, resume_page, total_expected FROM terms WHERE composer_id=? AND searchable=1 ORDER BY is_primary DESC, id")
             .map_err(|e| e.to_string())?;
         let rows = st
-            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)))
+            .query_map([id], |r| {
+                Ok(TermRow {
+                    id: r.get(0)?,
+                    term: r.get(1)?,
+                    baselined: r.get::<_, i64>(2)? != 0,
+                    resume_page: r.get::<_, i64>(3)?.max(0) as usize,
+                    total_expected: r.get::<_, i64>(4)?.max(0) as usize,
+                })
+            })
             .map_err(|e| e.to_string())?
             .collect::<Result<_, _>>()
             .map_err(|e| e.to_string())?;
@@ -147,22 +169,30 @@ async fn scan_inner(app: &Arc<App>, id: i64) -> Result<String, String> {
     let (mut total_new, mut errors) = (0usize, Vec::new());
     let mut new_titles: Vec<String> = Vec::new();
     let steps = terms.len();
-    for (i, (term_id, term, baselined)) in terms.into_iter().enumerate() {
-        let (a, t) = (app.clone(), term.clone());
-        let on_progress = move |done: usize, total: usize| {
-            a.scanning.lock().unwrap().insert(
-                id,
-                Progress { term: t.clone(), done, total, step: i + 1, steps },
-            );
+    for (i, tr) in terms.into_iter().enumerate() {
+        let TermRow { id: term_id, term, baselined, resume_page, total_expected } = tr;
+        let clean = baselined && resume_page == 0 && !full;
+        // recua 1 página ao retomar (o site pode ter deslocado itens); duplicatas são ignoradas
+        let start = if full || resume_page <= 1 { 1 } else { resume_page - 1 };
+        {
+            let db = app.db.lock().unwrap();
+            db.execute("UPDATE terms SET resume_page=MAX(resume_page,1) WHERE id=?", [term_id]).ok();
+        }
+        let progress = |done: usize, total: usize| {
+            app.scanning
+                .lock()
+                .unwrap()
+                .insert(id, Progress { term: term.clone(), done, total, step: i + 1, steps });
         };
-        on_progress(0, 0);
-        match scraper::search_all(&app.http, &term, &on_progress).await {
-            Err(e) => errors.push(e),
-            Ok(songs) => {
+        progress((start - 1) * scraper::PAGE_SIZE, total_expected);
+
+        let (mut new_here, mut fetched) = (0usize, 0usize);
+        let res = {
+            let mut on_page = |page: usize, total: usize, songs: &[scraper::Song]| -> Result<bool, String> {
                 let mut db = app.db.lock().unwrap();
                 let tx = db.transaction().map_err(|e| e.to_string())?;
-                let mut new_here = 0;
-                for s in &songs {
+                let mut page_new = 0usize;
+                for s in songs {
                     tx.execute(
                         "INSERT INTO songs VALUES (?,?,?,?,?,?,?,?,?,?)
                          ON CONFLICT(catalog_id) DO UPDATE SET title=excluded.title, show_name=excluded.show_name,
@@ -172,26 +202,48 @@ async fn scan_inner(app: &Arc<App>, id: i64) -> Result<String, String> {
                                 s.medley, s.uploads, s.copyright, s.url],
                     )
                     .map_err(|e| e.to_string())?;
-                    // Na 1ª varredura de um termo (baseline) nada é "novo".
+                    // Na carga inicial de um termo (baseline) nada é "novo".
                     let n = tx
                         .execute(
                             "INSERT OR IGNORE INTO hits(composer_id, catalog_id, found_at, is_new) VALUES (?,?,?,?)",
                             params![id, s.catalog_id, now(), baselined],
                         )
                         .map_err(|e| e.to_string())?;
-                    if baselined && n > 0 {
-                        new_here += n;
-                        new_titles.push(s.title.clone());
+                    if n > 0 {
+                        page_new += 1;
+                        if baselined {
+                            new_titles.push(s.title.clone());
+                        }
                     }
                 }
-                tx.execute("UPDATE terms SET baselined=1 WHERE id=?", [term_id]).map_err(|e| e.to_string())?;
+                // checkpoint: a próxima retomada começa depois desta página
+                tx.execute(
+                    "UPDATE terms SET resume_page=?, total_expected=? WHERE id=?",
+                    params![page + 1, total, term_id],
+                )
+                .map_err(|e| e.to_string())?;
                 tx.commit().map_err(|e| e.to_string())?;
+                drop(db);
+                if baselined {
+                    new_here += page_new;
+                }
+                fetched += songs.len();
+                progress(((page - 1) * scraper::PAGE_SIZE + songs.len()).min(total.max(1)), total);
+                Ok(!(clean && page_new == 0))
+            };
+            scraper::search_pages(&app.http, &term, start, &mut on_page).await
+        };
+        match res {
+            Err(e) => errors.push(e), // checkpoint fica salvo: dá para continuar depois
+            Ok(()) => {
+                let db = app.db.lock().unwrap();
+                db.execute("UPDATE terms SET baselined=1, resume_page=0 WHERE id=?", [term_id]).map_err(|e| e.to_string())?;
                 total_new += new_here;
-                // mensagens do log são códigos "chave|arg|arg", traduzidos na página
+                // mensagens do log são códigos "chave|arg|arg", traduzidas na página
                 log(&db, id, &if baselined {
-                    format!("scan.incremental|{term}|{}|{new_here}", songs.len())
+                    format!("scan.incremental|{term}|{fetched}|{new_here}")
                 } else {
-                    format!("scan.initial|{term}|{}", songs.len())
+                    format!("scan.initial|{term}|{fetched}")
                 });
             }
         }
@@ -215,26 +267,32 @@ async fn scan_inner(app: &Arc<App>, id: i64) -> Result<String, String> {
 }
 
 async fn scheduler(app: Arc<App>) {
+    let mut first = true;
     loop {
         let due: Vec<i64> = {
             let db = app.db.lock().unwrap();
             let t = now();
+            // Na partida, retoma cargas interrompidas na hora; depois respeita a janela de retentativa.
+            let retry_before = if first { i64::MAX } else { t - RETRY_AFTER_ERROR_SECS };
             let mut st = db
                 .prepare(
-                    "SELECT id FROM composers WHERE
-                       (last_ok_at IS NULL OR last_ok_at < ?1) AND
+                    "SELECT id FROM composers c WHERE
+                       (last_ok_at IS NULL OR last_ok_at < ?1 OR EXISTS(
+                          SELECT 1 FROM terms x WHERE x.composer_id=c.id AND x.searchable=1
+                            AND (x.baselined=0 OR x.resume_page>0))) AND
                        (last_attempt_at IS NULL OR last_attempt_at < ?2)",
                 )
                 .unwrap();
             let rows = st
-                .query_map(params![t - CHECK_INTERVAL_SECS, t - RETRY_AFTER_ERROR_SECS], |r| r.get(0))
+                .query_map(params![t - CHECK_INTERVAL_SECS, retry_before], |r| r.get(0))
                 .unwrap()
                 .filter_map(Result::ok)
                 .collect();
             rows
         };
+        first = false;
         for id in due {
-            let _ = scan_composer(&app, id).await;
+            let _ = scan_composer(&app, id, false).await;
         }
         tokio::time::sleep(Duration::from_secs(600)).await;
     }
@@ -266,15 +324,32 @@ async fn list_composers(State(app): S) -> ApiResult {
     for row in rows {
         let (id, name, last_ok, last_error, total, new) = row.map_err(err500)?;
         let mut ts = db
-            .prepare("SELECT id, term, is_primary, searchable FROM terms WHERE composer_id=? ORDER BY is_primary DESC, id")
+            .prepare("SELECT id, term, is_primary, searchable, baselined, resume_page, total_expected FROM terms WHERE composer_id=? ORDER BY is_primary DESC, id")
             .map_err(err500)?;
+        let mut incomplete: Vec<Value> = Vec::new();
         let aliases: Vec<Value> = ts
-            .query_map([id], |r| Ok(json!({"id": r.get::<_,i64>(0)?, "term": r.get::<_,String>(1)?, "primary": r.get::<_,i64>(2)? != 0, "searchable": r.get::<_,i64>(3)? != 0})))
+            .query_map([id], |r| {
+                let (term, searchable) = (r.get::<_, String>(1)?, r.get::<_, i64>(3)? != 0);
+                let (baselined, resume, total) = (r.get::<_, i64>(4)? != 0, r.get::<_, i64>(5)?, r.get::<_, i64>(6)?);
+                // pendente: carga inicial não concluída ou verificação interrompida no meio
+                let pending = searchable && (!baselined || resume > 0);
+                let loaded = ((resume - 1).max(0) * scraper::PAGE_SIZE as i64).min(total);
+                Ok((
+                    json!({"id": r.get::<_,i64>(0)?, "term": term.clone(), "primary": r.get::<_,i64>(2)? != 0, "searchable": searchable}),
+                    pending.then(|| json!({"term": term, "initial": !baselined, "loaded": loaded, "total": total})),
+                ))
+            })
             .map_err(err500)?
             .filter_map(Result::ok)
+            .map(|(a, inc)| {
+                if let Some(i) = inc {
+                    incomplete.push(i);
+                }
+                a
+            })
             .collect();
         out.push(json!({"id": id, "name": name, "terms": aliases, "last_ok_at": last_ok,
-            "last_error": last_error, "total": total, "new": new,
+            "last_error": last_error, "total": total, "new": new, "incomplete": incomplete,
             "scanning": scanning.get(&id).map(|p| json!({"term": p.term, "done": p.done, "total": p.total, "step": p.step, "steps": p.steps}))}));
     }
     Ok(Json(json!(out)))
@@ -303,9 +378,19 @@ async fn add_composer(State(app): S, Json(b): Json<NameBody>) -> ApiResult {
 }
 
 fn spawn_scan(app: Arc<App>, id: i64) {
+    spawn_scan_mode(app, id, false);
+}
+
+fn spawn_scan_mode(app: Arc<App>, id: i64, full: bool) {
     tokio::spawn(async move {
-        let _ = scan_composer(&app, id).await;
+        let _ = scan_composer(&app, id, full).await;
     });
+}
+
+#[derive(Deserialize)]
+struct ScanQuery {
+    /// "1" = recarregamento geral (todas as páginas)
+    full: Option<String>,
 }
 
 async fn del_composer(State(app): S, Path(id): Path<i64>) -> ApiResult {
@@ -380,15 +465,16 @@ async fn merge(State(app): S, Path(id): Path<i64>, Json(b): Json<MergeBody>) -> 
     Ok(Json(json!({"ok": true})))
 }
 
-async fn scan_one(State(app): S, Path(id): Path<i64>) -> ApiResult {
+async fn scan_one(State(app): S, Path(id): Path<i64>, Query(q): Query<ScanQuery>) -> ApiResult {
     if app.scanning.lock().unwrap().contains_key(&id) {
         return Err(bad("err.scan_running"));
     }
-    spawn_scan(app, id);
+    spawn_scan_mode(app, id, q.full.as_deref() == Some("1"));
     Ok(Json(json!({"started": true})))
 }
 
-async fn scan_all(State(app): S) -> ApiResult {
+async fn scan_all(State(app): S, Query(q): Query<ScanQuery>) -> ApiResult {
+    let full = q.full.as_deref() == Some("1");
     let ids: Vec<i64> = {
         let db = app.db.lock().unwrap();
         let mut st = db.prepare("SELECT id FROM composers").map_err(err500)?;
@@ -397,7 +483,7 @@ async fn scan_all(State(app): S) -> ApiResult {
     };
     tokio::spawn(async move {
         for id in ids {
-            let _ = scan_composer(&app, id).await;
+            let _ = scan_composer(&app, id, full).await;
         }
     });
     Ok(Json(json!({"started": true})))
