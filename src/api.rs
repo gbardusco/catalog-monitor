@@ -600,17 +600,40 @@ async fn songs(State(app): S, Path(id): Path<i64>, Query(q): Query<SongQuery>) -
     ))
 }
 
-async fn list_new(State(app): S) -> ApiResult {
+#[derive(Deserialize, Default)]
+struct NewQuery {
+    page: Option<usize>,
+    limit: Option<usize>,
+    /// instante (epoch) da última vez que a aba "Novos" foi aberta: define o contador `unseen`
+    since: Option<i64>,
+}
+
+/// Registros novos (mais recentes primeiro), paginados. Devolve também o total e quantos
+/// foram achados depois de `since` (contador da aba), sem precisar baixar a lista inteira.
+async fn list_new(State(app): S, Query(q): Query<NewQuery>) -> ApiResult {
     let db = app.db.lock().unwrap();
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let page = q.page.unwrap_or(1).max(1);
+    let total: i64 = db
+        .query_row("SELECT COUNT(*) FROM hits WHERE is_new=1", [], |r| r.get(0))
+        .map_err(internal)?;
+    let unseen: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM hits WHERE is_new=1 AND found_at > ?",
+            [q.since.unwrap_or(0)],
+            |r| r.get(0),
+        )
+        .map_err(internal)?;
     let by_fold = all_terms_by_fold(&db);
     let rows = query_all(
         &db,
         &format!(
             "SELECT h.composer_id, c.name, s.catalog_id, s.title, s.credits, s.artist, s.date_added, s.url, h.found_at, {KIND_SQL}
              FROM hits h JOIN songs s ON s.catalog_id=h.catalog_id JOIN composers c ON c.id=h.composer_id
-             WHERE h.is_new=1 ORDER BY h.found_at DESC, s.date_added DESC, s.catalog_id DESC"
+             WHERE h.is_new=1 ORDER BY h.found_at DESC, s.date_added DESC, s.catalog_id DESC
+             LIMIT ? OFFSET ?"
         ),
-        [],
+        params![limit as i64, ((page - 1) * limit) as i64],
         |r| {
             let credits: String = r.get::<_, Option<String>>(4)?.unwrap_or_default();
             Ok(json!({
@@ -621,7 +644,9 @@ async fn list_new(State(app): S) -> ApiResult {
             }))
         },
     )?;
-    Ok(Json(json!(rows)))
+    Ok(Json(
+        json!({"total": total, "unseen": unseen, "page": page, "limit": limit, "items": rows}),
+    ))
 }
 
 /// Painel de conexões: músicas em comum com outros compositores e co-autores frequentes.
