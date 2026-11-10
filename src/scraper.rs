@@ -3,7 +3,8 @@ use scraper::{ElementRef, Html, Selector};
 use std::time::Duration;
 use unicode_normalization::UnicodeNormalization;
 
-const BASE: &str = "https://www.arrangeme.com/search";
+pub const DEFAULT_BASE: &str = "https://www.arrangeme.com";
+
 pub const PAGE_SIZE: usize = 50;
 const MAX_PAGES: usize = 100;
 
@@ -70,7 +71,10 @@ pub fn parse_page(html: &str) -> (Option<usize>, Vec<Song>) {
             credits: String::new(),
             date_added: String::new(),
             medley: v.attr("data-medley-approved") == Some("Y"),
-            uploads: v.attr("data-arrangements").and_then(|x| x.parse().ok()).unwrap_or(0),
+            uploads: v
+                .attr("data-arrangements")
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0),
             copyright: v.attr("data-copyright").unwrap_or("").to_string(),
             url: v
                 .attr("data-arrange-url")
@@ -98,47 +102,113 @@ pub fn parse_page(html: &str) -> (Option<usize>, Vec<Song>) {
     (total, songs)
 }
 
-pub fn client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) CatalogMonitor/0.1 (uso pessoal)")
-        .timeout(Duration::from_secs(30))
-        .build()
-        .expect("client")
+/// Cliente HTTP + URL base (configurável para testes com servidor falso).
+pub struct Fetcher {
+    pub client: reqwest::Client,
+    pub base: String,
 }
 
-async fn fetch(client: &reqwest::Client, term: &str, page: usize) -> Result<String, String> {
-    let mut last = String::new();
-    for attempt in 0..3 {
-        if attempt > 0 {
-            tokio::time::sleep(Duration::from_secs(3 * attempt)).await;
+impl Fetcher {
+    pub fn new(base: &str) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("client");
+        Fetcher {
+            client,
+            base: base.trim_end_matches('/').to_string(),
         }
-        let r = client
-            .get(BASE)
-            .query(&[("q", term), ("sort", "date_desc"), ("page", &page.to_string())])
+    }
+}
+
+const USER_AGENTS: [&str; 4] = [
+    "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+];
+
+fn nanos() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0)
+}
+
+/// Espera `base` + até 1/3 de jitter.
+fn jittered(base: Duration) -> Duration {
+    base + Duration::from_millis(nanos() % (base.as_millis() as u64 / 3 + 1))
+}
+
+fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
+    resp.headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(|s| Duration::from_secs(s.min(120)))
+}
+
+async fn fetch(f: &Fetcher, term: &str, page: usize) -> Result<String, String> {
+    let mut last = String::new();
+    let mut wait = Duration::ZERO;
+    for attempt in 0..4u32 {
+        if attempt > 0 {
+            tokio::time::sleep(jittered(wait)).await;
+        }
+        wait = Duration::from_secs(3 << attempt); // 3s, 6s, 12s...
+        let r = f
+            .client
+            .get(format!("{}/search", f.base))
+            .header(
+                reqwest::header::USER_AGENT,
+                USER_AGENTS[(nanos() as usize) % USER_AGENTS.len()],
+            )
+            .query(&[
+                ("q", term),
+                ("sort", "date_desc"),
+                ("page", &page.to_string()),
+            ])
             .send()
             .await;
         match r {
             Ok(resp) if resp.status().is_success() => {
                 return resp.text().await.map_err(|e| e.to_string())
             }
-            Ok(resp) => last = format!("HTTP {}", resp.status()),
+            Ok(resp) => {
+                let st = resp.status();
+                last = format!("HTTP {st}");
+                if st.as_u16() == 429 || st.as_u16() == 503 {
+                    if let Some(ra) = retry_after(&resp) {
+                        wait = ra; // respeita o pedido do servidor
+                    }
+                } else if st.is_client_error() {
+                    break; // 4xx (exceto 429) não melhora tentando de novo
+                }
+            }
             Err(e) => last = e.to_string(),
         }
     }
     Err(format!("fetch failed for \"{term}\" (page {page}): {last}"))
 }
 
+/// Callback chamado a cada página: (página, total no site, linhas). `Ok(false)` interrompe a busca.
+pub type OnPage<'a> = dyn FnMut(usize, usize, &[Song]) -> Result<bool, String> + Send + 'a;
+
 /// Percorre as páginas de resultados de um termo (do mais novo ao mais velho) a partir de
 /// `start_page`. A cada página chama `on_page(página, total_no_site, linhas)`; se devolver
 /// `Ok(false)` a busca para (usado para parar cedo quando nada de novo aparece).
 pub async fn search_pages(
-    client: &reqwest::Client,
+    f: &Fetcher,
     term: &str,
     start_page: usize,
-    on_page: &mut (dyn FnMut(usize, usize, &[Song]) -> Result<bool, String> + Send),
+    delay: Duration,
+    on_page: &mut OnPage<'_>,
 ) -> Result<(), String> {
     for page in start_page.max(1)..=MAX_PAGES {
-        let html = fetch(client, term, page).await?;
+        let html = fetch(f, term, page).await?;
         let (total, songs) = parse_page(&html);
         let total = total.unwrap_or(0);
         if songs.is_empty() {
@@ -153,7 +223,7 @@ pub async fn search_pages(
         if total > 0 && page * PAGE_SIZE >= total {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(1200)).await;
+        tokio::time::sleep(jittered(delay)).await;
     }
     Ok(())
 }
