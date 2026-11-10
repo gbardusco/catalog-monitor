@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Catalog Monitor</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --fg:#1c2230; --mut:#6b7385; --line:#e3e6ec; --acc:#4f46e5; --new:#16a34a; --err:#dc2626; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#12151c; --card:#1a1f2b; --fg:#e8eaf0; --mut:#8b93a7; --line:#2a3142; --acc:#818cf8; --new:#4ade80; --err:#f87171; } }
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1c2230; --mut:#6b7385; --line:#e3e6ec; --acc:#4f46e5; --new:#16a34a; --err:#dc2626; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151c; --card:#1a1f2b; --fg:#e8eaf0; --mut:#8b93a7; --line:#2a3142; --acc:#818cf8; --new:#4ade80; --err:#f87171; --warn:#fbbf24; } }
   * { box-sizing:border-box }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,sans-serif; }
   header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; background:var(--card); }
@@ -34,6 +34,9 @@
   .prog > i { display:block; height:100%; background:var(--acc); transition:width .4s }
   .prog.ind > i { width:35%; animation:ind 1.1s ease-in-out infinite alternate }
   @keyframes ind { from { margin-left:0 } to { margin-left:65% } }
+  .warn { border-color:var(--warn); color:var(--warn) }
+  .banner { border:1px solid var(--warn); border-radius:8px; padding:8px 10px; margin:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+  .banner .txt { flex:1; min-width:200px }
   .err { color:var(--err) } a { color:var(--acc); text-decoration:none }
   h2 { margin:0 0 6px; font-size:18px } .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0 }
   details { margin-top:14px } pre { font-size:12px; white-space:pre-wrap; color:var(--mut) }
@@ -47,7 +50,9 @@
     <button id="tabNew"><span data-i18n="tab.new"></span> <span class="badge" id="newCount" hidden>0</span></button>
     <button id="notifBtn" data-i18n-title="notif.title"></button>
   </nav>
+  <button id="resumeAll" class="warn" data-i18n="resume.all" hidden></button>
   <button id="scanAll" data-i18n="scan.all"></button>
+  <button id="reloadAll" data-i18n="reload.all" data-i18n-title="reload.all.title"></button>
   <select id="lang" aria-label="Language" title="Language / Idioma / Idioma">
     <option value="pt">Português</option><option value="en">English</option><option value="es">Español</option>
   </select>
@@ -75,6 +80,10 @@ let view = 'comp', lastNew = null;
 let composers = [], selected = null, credOnly = true, newOnly = false;
 const I18N = {
 pt: {
+  'incomplete.tag':'incompleto','incomplete.title':'Carregamento incompleto','incomplete.initial':'carga inicial {0}/{1} registros','incomplete.interrupted':'verificação interrompida',
+  'resume.btn':'Continuar carregamento','resume.all':'Continuar pendentes','reload.btn':'Recarregar tudo','reload.title':'Percorre todas as páginas do site e atualiza todos os registros deste compositor',
+  'reload.all':'Recarregamento geral','reload.all.title':'Percorre todas as páginas de todos os compositores (mais lento)',
+  'confirm.reload':'Recarregar todas as páginas deste compositor? Pode levar alguns minutos.','confirm.reload.all':'Recarregar todas as páginas de TODOS os compositores? Pode levar vários minutos.',
   'tab.composers':'Compositores','tab.new':'Novos','notif.enable':'🔔 Ativar avisos','notif.active':'🔔 Avisos ativos',
   'notif.title':'Avisos do navegador quando surgir registro novo','notif.body':'{0} novo(s) registro(s) encontrado(s)',
   'scan.all':'Verificar todos agora','new.title':'Novos registros encontrados',
@@ -91,8 +100,12 @@ pt: {
   'err.scan_running':'Já existe uma verificação em andamento.','err.not_found':'Compositor não encontrado.','err.empty_name':'Nome vazio.',
   'err.empty_alias':'Alias vazio.','err.duplicate':'Este nome/alias já está cadastrado (talvez em outro compositor).',
   'err.primary_alias':'Não é possível remover o nome principal.','err.same_composer':'Escolha outro compositor.',
-  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros, {2} novo(s)','log.error':'ERRO: {0}'},
+  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros verificados, {2} novo(s)','log.error':'ERRO: {0}'},
 en: {
+  'incomplete.tag':'incomplete','incomplete.title':'Incomplete load','incomplete.initial':'initial load {0}/{1} records','incomplete.interrupted':'check interrupted',
+  'resume.btn':'Resume loading','resume.all':'Resume pending','reload.btn':'Reload all','reload.title':'Walks through every site page and refreshes all records of this composer',
+  'reload.all':'Full reload','reload.all.title':'Walks through every page for all composers (slower)',
+  'confirm.reload':'Reload every page for this composer? It may take a few minutes.','confirm.reload.all':'Reload every page for ALL composers? It may take several minutes.',
   'tab.composers':'Composers','tab.new':'New','notif.enable':'🔔 Enable alerts','notif.active':'🔔 Alerts on',
   'notif.title':'Browser alerts when a new record shows up','notif.body':'{0} new record(s) found',
   'scan.all':'Check all now','new.title':'New records found',
@@ -109,8 +122,12 @@ en: {
   'err.scan_running':'A check is already running.','err.not_found':'Composer not found.','err.empty_name':'Empty name.',
   'err.empty_alias':'Empty alias.','err.duplicate':'This name/alias is already registered (maybe under another composer).',
   'err.primary_alias':'The primary name can\'t be removed.','err.same_composer':'Pick a different composer.',
-  'log.initial':'"{0}": {1} records (initial load)','log.incremental':'"{0}": {1} records, {2} new','log.error':'ERROR: {0}'},
+  'log.initial':'"{0}": {1} records (initial load)','log.incremental':'"{0}": {1} records checked, {2} new','log.error':'ERROR: {0}'},
 es: {
+  'incomplete.tag':'incompleto','incomplete.title':'Carga incompleta','incomplete.initial':'carga inicial {0}/{1} registros','incomplete.interrupted':'comprobación interrumpida',
+  'resume.btn':'Continuar carga','resume.all':'Continuar pendientes','reload.btn':'Recargar todo','reload.title':'Recorre todas las páginas del sitio y actualiza todos los registros de este compositor',
+  'reload.all':'Recarga general','reload.all.title':'Recorre todas las páginas de todos los compositores (más lento)',
+  'confirm.reload':'¿Recargar todas las páginas de este compositor? Puede tardar unos minutos.','confirm.reload.all':'¿Recargar todas las páginas de TODOS los compositores? Puede tardar varios minutos.',
   'tab.composers':'Compositores','tab.new':'Nuevos','notif.enable':'🔔 Activar avisos','notif.active':'🔔 Avisos activos',
   'notif.title':'Avisos del navegador cuando aparezca un registro nuevo','notif.body':'{0} nuevo(s) registro(s) encontrado(s)',
   'scan.all':'Comprobar todos ahora','new.title':'Nuevos registros encontrados',
@@ -127,7 +144,7 @@ es: {
   'err.scan_running':'Ya hay una comprobación en curso.','err.not_found':'Compositor no encontrado.','err.empty_name':'Nombre vacío.',
   'err.empty_alias':'Alias vacío.','err.duplicate':'Este nombre/alias ya está registrado (quizá en otro compositor).',
   'err.primary_alias':'No se puede quitar el nombre principal.','err.same_composer':'Elige otro compositor.',
-  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros, {2} nuevo(s)','log.error':'ERROR: {0}'},
+  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros comprobados, {2} nuevo(s)','log.error':'ERROR: {0}'},
 };
 const LOCALES = { pt:'pt-BR', en:'en-US', es:'es-ES' };
 function detectLang() {
@@ -216,10 +233,13 @@ async function loadList() {
   newList = fresh;
   updateNewIndicators();
   if (view === 'new') loadNew();
+  const pending = composers.filter(c => c.incomplete.length && !c.scanning).length;
+  $('#resumeAll').hidden = !pending || composers.some(c => c.scanning);
+  $('#resumeAll').textContent = t('resume.all') + ` (${pending})`;
   if (selected && !composers.find(c => c.id === selected)) selected = null;
   $('#list').innerHTML = composers.map(c => `
     <div class="comp ${c.id===selected?'sel':''}" data-id="${c.id}">
-      <b>${esc(c.name)}</b>
+      <b>${esc(c.name)}${c.incomplete.length && !c.scanning ? ` <span class="warn mut" title="${t('incomplete.title')}">⚠ ${t('incomplete.tag')}</span>` : ''}</b>
       <span class="mut">${t('comp.records', c.total)} · ${c.scanning ? t('comp.scanning') : t('comp.verified', fmt(c.last_ok_at))}</span>${progBar(c.scanning)}
       ${c.last_error?`<div class="err mut">${esc(c.last_error)}</div>`:''}
     </div>`).join('') || `<p class="mut">${t('list.empty')}</p>`;
@@ -236,8 +256,10 @@ async function renderDetail() {
     <div>${c.terms.map(x => `<span class="chip ${x.primary?'p':''}" ${x.searchable?'':`title="${t('visual.title')}"`} style="${x.searchable?'':'border-style:dashed'}">${esc(x.term)}${x.searchable?'':` <span class="mut">${t('visual.tag')}</span>`}${x.primary?'':`<button class="x" data-delalias="${x.id}" title="${t('alias.remove')}">×</button>`}</span>`).join('')}</div>
     <form id="aliasForm" class="row" style="margin-top:6px"><input type="text" id="aliasIn" placeholder="${t('alias.placeholder')}" required><button>${t('alias.btn')}</button></form>
     <label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="visualIn"> ${t('visual.label')}</label>
+    ${c.incomplete.length && !c.scanning ? `<div class="banner warn"><div class="txt"><b>${t('incomplete.title')}</b><br><span class="mut">${c.incomplete.map(i => esc(i.term) + ' — ' + (i.initial ? t('incomplete.initial', i.loaded, i.total) : t('incomplete.interrupted'))).join(' · ')}</span></div><button id="resume" class="pri">${t('resume.btn')}</button></div>` : ''}
     <div class="bar">
       <button id="scanOne">${t('scan.now')}</button>
+      <button id="reloadOne" data-i18n-title="reload.title" title="${t('reload.title')}">${t('reload.btn')}</button>
       <label><input type="checkbox" id="credOnly" ${credOnly?'checked':''}> ${t('filter.credits')}</label>
       <label><input type="checkbox" id="newOnly" ${newOnly?'checked':''}> ${t('filter.new')}</label>
       ${others.length?`<select id="mergeSel"><option value="">${t('merge.placeholder')}</option>${others.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>`:''}
@@ -258,10 +280,14 @@ $('#addForm').onsubmit = async e => {
   $('#newName').value = ''; selected = r.id; await loadList();
 };
 $('#scanAll').onclick = async () => { await api('/scan', 'POST'); setTimeout(loadList, 500); };
+$('#resumeAll').onclick = async () => { await api('/scan', 'POST'); setTimeout(loadList, 500); };
+$('#reloadAll').onclick = async () => { if (confirm(t('confirm.reload.all'))) { await api('/scan?full=1', 'POST'); setTimeout(loadList, 500); } };
 $('#list').onclick = e => { const el = e.target.closest('.comp'); if (el) { selected = +el.dataset.id; loadList(); } };
 $('#detail').onclick = async e => {
   const el = e.target, id = selected;
   if (el.dataset.delalias) { await api('/aliases/' + el.dataset.delalias, 'DELETE'); loadList(); }
+  else if (el.id === 'resume') { await api(`/composers/${id}/scan`, 'POST'); setTimeout(loadList, 500); }
+  else if (el.id === 'reloadOne' && confirm(t('confirm.reload'))) { await api(`/composers/${id}/scan?full=1`, 'POST'); setTimeout(loadList, 500); }
   else if (el.id === 'scanOne') { await api(`/composers/${id}/scan`, 'POST'); setTimeout(loadList, 500); }
   else if (el.id === 'del' && confirm(t('confirm.delete'))) { await api('/composers/' + id, 'DELETE'); selected = null; $('#detail').innerHTML = `<span class="mut">${t('detail.empty')}</span>`; loadList(); }
   else if (el.id === 'credOnly') { credOnly = el.checked; renderDetail(); }
