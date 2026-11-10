@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog Monitor</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1c2230; --mut:#6b7385; --line:#e3e6ec; --acc:#4f46e5; --new:#16a34a; --err:#dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151c; --card:#1a1f2b; --fg:#e8eaf0; --mut:#8b93a7; --line:#2a3142; --acc:#818cf8; --new:#4ade80; --err:#f87171; } }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; background:var(--card); }
+  header h1 { font-size:16px; margin:0; flex:1 }
+  main { display:grid; grid-template-columns:320px 1fr; gap:16px; padding:16px 20px; align-items:start; }
+  @media (max-width:800px){ main{grid-template-columns:1fr} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:6px; padding:5px 10px; cursor:pointer }
+  button:hover { border-color:var(--acc) } button.pri { background:var(--acc); color:#fff; border-color:var(--acc) }
+  button.x { padding:0 6px; color:var(--mut); border:none; background:none }
+  select { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg) }
+  input[type=text] { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); min-width:0 }
+  .row { display:flex; gap:6px; align-items:center } .row input { flex:1 }
+  .comp { padding:8px; border-radius:8px; cursor:pointer; border:1px solid transparent; margin-top:6px }
+  .comp.sel { border-color:var(--acc); background:color-mix(in srgb,var(--acc) 8%,transparent) }
+  .comp b { display:block } .mut { color:var(--mut); font-size:12px }
+  .badge { background:var(--new); color:#fff; border-radius:10px; padding:0 7px; font-size:11px; margin-left:6px }
+  .chip { display:inline-flex; align-items:center; gap:2px; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:1px 4px 1px 9px; margin:2px 4px 2px 0; font-size:12px }
+  .chip.p { border-color:var(--acc) }
+  table { width:100%; border-collapse:collapse } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top }
+  th { font-size:12px; color:var(--mut); font-weight:600 }
+  tr.new td { background:color-mix(in srgb,var(--new) 10%,transparent) }
+  tr.dim td { opacity:.55 }
+  .prog { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:5px }
+  .prog > i { display:block; height:100%; background:var(--acc); transition:width .4s }
+  .prog.ind > i { width:35%; animation:ind 1.1s ease-in-out infinite alternate }
+  @keyframes ind { from { margin-left:0 } to { margin-left:65% } }
+  .err { color:var(--err) } a { color:var(--acc); text-decoration:none }
+  h2 { margin:0 0 6px; font-size:18px } .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0 }
+  details { margin-top:14px } pre { font-size:12px; white-space:pre-wrap; color:var(--mut) }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎼 Catalog Monitor <span class="mut">— ArrangeMe</span></h1>
+  <nav class="row">
+    <button id="tabComp" class="pri" data-i18n="tab.composers"></button>
+    <button id="tabNew"><span data-i18n="tab.new"></span> <span class="badge" id="newCount" hidden>0</span></button>
+    <button id="notifBtn" data-i18n-title="notif.title"></button>
+  </nav>
+  <button id="scanAll" data-i18n="scan.all"></button>
+  <select id="lang" aria-label="Language" title="Language / Idioma / Idioma">
+    <option value="pt">Português</option><option value="en">English</option><option value="es">Español</option>
+  </select>
+</header>
+<section id="newView" class="card" style="margin:16px 20px" hidden>
+  <h2 data-i18n="new.title"></h2>
+  <div class="mut" data-i18n="new.desc"></div>
+  <div id="newBody"></div>
+</section>
+<main id="mainView">
+  <aside class="card">
+    <form id="addForm" class="row">
+      <input type="text" id="newName" data-i18n-ph="add.placeholder" required>
+      <button class="pri" data-i18n="add.btn"></button>
+    </form>
+    <div id="list"></div>
+  </aside>
+  <section class="card" id="detail"><span class="mut" data-i18n="detail.empty"></span></section>
+</main>
+<details style="padding:0 20px 20px"><summary class="mut" data-i18n="log.summary"></summary><pre id="log"></pre></details>
+
+<script>
+const $ = s => document.querySelector(s);
+let view = 'comp', lastNew = null;
+let composers = [], selected = null, credOnly = true, newOnly = false;
+const I18N = {
+pt: {
+  'tab.composers':'Compositores','tab.new':'Novos','notif.enable':'🔔 Ativar avisos','notif.active':'🔔 Avisos ativos',
+  'notif.title':'Avisos do navegador quando surgir registro novo','notif.body':'{0} novo(s) registro(s) encontrado(s)',
+  'scan.all':'Verificar todos agora','new.title':'Novos registros encontrados',
+  'new.desc':'Histórico dos registros que apareceram no site depois da carga inicial. Mais recentes primeiro.',
+  'new.empty':'Nenhum registro novo até agora. 🎉','new.found':'Encontrado em','new.composer':'Compositor','new.since':'No site desde',
+  'add.placeholder':'Novo compositor…','add.btn':'Adicionar','list.empty':'Nenhum compositor.','detail.empty':'Adicione ou selecione um compositor.',
+  'log.summary':'Log de verificações','comp.records':'{0} registros','comp.scanning':'verificando…','comp.verified':'verificado: {0}','never':'nunca',
+  'prog.name':'nome {0}/{1}','alias.placeholder':'Adicionar alias (ex.: nome verdadeiro)…','alias.btn':'+ alias','alias.remove':'remover alias',
+  'visual.label':'só visual (não buscar no site) — ex.: nome artístico ambíguo','visual.tag':'👁 visual','visual.title':'só visual: não é buscado no site',
+  'scan.now':'Verificar agora','filter.credits':'só onde consta nos créditos','filter.new':'só novos','merge.placeholder':'Unir a outro compositor…',
+  'delete':'Excluir','summary':'{0} registro(s), do mais novo ao mais antigo · última verificação {1} (automática a cada 24h)',
+  'col.added':'Adicionado','col.title':'Título','col.credits':'Créditos','col.artist':'Artista / Show','col.uploads':'Upl.','badge.new':'novo',
+  'confirm.delete':'Excluir este compositor e seus registros?','confirm.merge':'Unir este compositor em "{0}"? Os nomes viram aliases dele.',
+  'err.scan_running':'Já existe uma verificação em andamento.','err.not_found':'Compositor não encontrado.','err.empty_name':'Nome vazio.',
+  'err.empty_alias':'Alias vazio.','err.duplicate':'Este nome/alias já está cadastrado (talvez em outro compositor).',
+  'err.primary_alias':'Não é possível remover o nome principal.','err.same_composer':'Escolha outro compositor.',
+  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros, {2} novo(s)','log.error':'ERRO: {0}'},
+en: {
+  'tab.composers':'Composers','tab.new':'New','notif.enable':'🔔 Enable alerts','notif.active':'🔔 Alerts on',
+  'notif.title':'Browser alerts when a new record shows up','notif.body':'{0} new record(s) found',
+  'scan.all':'Check all now','new.title':'New records found',
+  'new.desc':'History of records that appeared on the site after the initial load. Newest first.',
+  'new.empty':'No new records so far. 🎉','new.found':'Found at','new.composer':'Composer','new.since':'On site since',
+  'add.placeholder':'New composer…','add.btn':'Add','list.empty':'No composers.','detail.empty':'Add or select a composer.',
+  'log.summary':'Check log','comp.records':'{0} records','comp.scanning':'checking…','comp.verified':'checked: {0}','never':'never',
+  'prog.name':'name {0}/{1}','alias.placeholder':'Add alias (e.g. real name)…','alias.btn':'+ alias','alias.remove':'remove alias',
+  'visual.label':'display only (don\'t search the site) — e.g. ambiguous stage name','visual.tag':'👁 display','visual.title':'display only: not searched on the site',
+  'scan.now':'Check now','filter.credits':'only where credited','filter.new':'only new','merge.placeholder':'Merge into another composer…',
+  'delete':'Delete','summary':'{0} record(s), newest to oldest · last check {1} (automatic every 24h)',
+  'col.added':'Added','col.title':'Title','col.credits':'Credits','col.artist':'Artist / Show','col.uploads':'Upl.','badge.new':'new',
+  'confirm.delete':'Delete this composer and their records?','confirm.merge':'Merge this composer into "{0}"? Their names become aliases.',
+  'err.scan_running':'A check is already running.','err.not_found':'Composer not found.','err.empty_name':'Empty name.',
+  'err.empty_alias':'Empty alias.','err.duplicate':'This name/alias is already registered (maybe under another composer).',
+  'err.primary_alias':'The primary name can\'t be removed.','err.same_composer':'Pick a different composer.',
+  'log.initial':'"{0}": {1} records (initial load)','log.incremental':'"{0}": {1} records, {2} new','log.error':'ERROR: {0}'},
+es: {
+  'tab.composers':'Compositores','tab.new':'Nuevos','notif.enable':'🔔 Activar avisos','notif.active':'🔔 Avisos activos',
+  'notif.title':'Avisos del navegador cuando aparezca un registro nuevo','notif.body':'{0} nuevo(s) registro(s) encontrado(s)',
+  'scan.all':'Comprobar todos ahora','new.title':'Nuevos registros encontrados',
+  'new.desc':'Historial de registros que aparecieron en el sitio después de la carga inicial. Más recientes primero.',
+  'new.empty':'Ningún registro nuevo por ahora. 🎉','new.found':'Encontrado el','new.composer':'Compositor','new.since':'En el sitio desde',
+  'add.placeholder':'Nuevo compositor…','add.btn':'Añadir','list.empty':'Ningún compositor.','detail.empty':'Añade o selecciona un compositor.',
+  'log.summary':'Registro de comprobaciones','comp.records':'{0} registros','comp.scanning':'comprobando…','comp.verified':'comprobado: {0}','never':'nunca',
+  'prog.name':'nombre {0}/{1}','alias.placeholder':'Añadir alias (p. ej., nombre real)…','alias.btn':'+ alias','alias.remove':'quitar alias',
+  'visual.label':'solo visual (no buscar en el sitio) — p. ej., nombre artístico ambiguo','visual.tag':'👁 visual','visual.title':'solo visual: no se busca en el sitio',
+  'scan.now':'Comprobar ahora','filter.credits':'solo donde figura en los créditos','filter.new':'solo nuevos','merge.placeholder':'Unir con otro compositor…',
+  'delete':'Eliminar','summary':'{0} registro(s), del más nuevo al más antiguo · última comprobación {1} (automática cada 24 h)',
+  'col.added':'Añadido','col.title':'Título','col.credits':'Créditos','col.artist':'Artista / Show','col.uploads':'Subid.','badge.new':'nuevo',
+  'confirm.delete':'¿Eliminar este compositor y sus registros?','confirm.merge':'¿Unir este compositor con "{0}"? Sus nombres pasan a ser alias.',
+  'err.scan_running':'Ya hay una comprobación en curso.','err.not_found':'Compositor no encontrado.','err.empty_name':'Nombre vacío.',
+  'err.empty_alias':'Alias vacío.','err.duplicate':'Este nombre/alias ya está registrado (quizá en otro compositor).',
+  'err.primary_alias':'No se puede quitar el nombre principal.','err.same_composer':'Elige otro compositor.',
+  'log.initial':'"{0}": {1} registros (carga inicial)','log.incremental':'"{0}": {1} registros, {2} nuevo(s)','log.error':'ERROR: {0}'},
+};
+const LOCALES = { pt:'pt-BR', en:'en-US', es:'es-ES' };
+function detectLang() {
+  try { const s = localStorage.getItem('lang'); if (I18N[s]) return s; } catch {}
+  const n = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return I18N[n] ? n : 'en';
+}
+let lang = detectLang();
+const t = (k, ...a) => (I18N[lang][k] ?? I18N.en[k] ?? k).replace(/\{(\d+)\}/g, (_, i) => a[i] ?? '');
+function applyI18n() {
+  document.documentElement.lang = LOCALES[lang];
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  document.querySelectorAll('[data-i18n-title]').forEach(e => e.title = t(e.dataset.i18nTitle));
+  $('#lang').value = lang;
+}
+// mensagens do log chegam como "chave|arg|arg"; entradas antigas (texto livre) são exibidas como estão
+function fmtLog(m) {
+  const [k, ...a] = m.split('|');
+  return I18N.en[k] ? t(k, ...a) : m;
+}
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path, method='GET', body) {
+  const r = await fetch('/api' + path, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { const m = await r.text(); alert(I18N.en[m] ? t(m) : m); throw new Error(); }
+  return r.json();
+}
+const fmt = ts => ts ? new Date(ts*1000).toLocaleString(LOCALES[lang]) : t('never');
+
+function progBar(p) {
+  if (!p) return '';
+  const pct = p.total ? Math.min(100, Math.round(p.done * 100 / p.total)) : 0;
+  const label = `${p.steps > 1 ? `${t('prog.name', p.step, p.steps)} · ` : ''}"${esc(p.term)}"${p.total ? ` · ${p.done}/${p.total}` : ''}`;
+  return `<div class="prog ${p.total ? '' : 'ind'}"><i style="width:${p.total ? pct : 35}%"></i></div><span class="mut">${label}</span>`;
+}
+
+let newList = [];
+const getSeen = () => { try { return +localStorage.getItem('newSeenAt') || 0; } catch { return 0; } };
+const setSeen = t => { try { localStorage.setItem('newSeenAt', t); } catch {} };
+function setSeenIfFirstRun(l) {
+  try { if (localStorage.getItem('newSeenAt') === null) setSeen(Math.floor(Date.now() / 1000)); } catch {}
+}
+function setView(v) {
+  view = v;
+  if (v === 'new') setSeen(Math.floor(Date.now() / 1000));
+  $('#mainView').hidden = v !== 'comp'; $('#newView').hidden = v !== 'new';
+  $('#tabComp').classList.toggle('pri', v === 'comp'); $('#tabNew').classList.toggle('pri', v === 'new');
+  if (v === 'new') loadNew();
+}
+async function loadNew() {
+  const l = newList = await api('/new');
+  updateNewIndicators();
+  $('#newBody').innerHTML = l.length ? `<table><thead><tr><th>${t('new.found')}</th><th>${t('new.composer')}</th><th>${t('col.title')}</th><th>${t('col.credits')}</th><th>${t('new.since')}</th></tr></thead><tbody>` +
+    l.map(s => `<tr class="${s.credit_match ? '' : 'dim'}"><td>${fmt(s.found_at)}</td><td>${esc(s.composer)}</td>
+      <td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></td><td>${esc(s.credits)}</td><td>${esc(s.date_added)}</td></tr>`).join('') + '</tbody></table>'
+    : `<p class="mut">${t('new.empty')}</p>`;
+}
+$('#tabComp').onclick = () => setView('comp');
+$('#tabNew').onclick = () => setView('new');
+
+// --- notificações do navegador + contador no título ---
+function updateNewIndicators() {
+  const seenAt = view === 'new' ? Math.floor(Date.now() / 1000) : getSeen();
+  if (view === 'new') setSeen(seenAt);
+  const n = newList.filter(s => s.found_at > seenAt).length;
+  $('#newCount').textContent = n; $('#newCount').hidden = !n;
+  document.title = (n ? `(${n}) ` : '') + 'Catalog Monitor';
+  if (lastNew !== null && newList.length > lastNew && 'Notification' in window && Notification.permission === 'granted') {
+    const n2 = new Notification('Catalog Monitor', { body: t('notif.body', newList.length - lastNew) });
+    n2.onclick = () => { window.focus(); setView('new'); };
+  }
+  lastNew = newList.length;
+}
+function updateNotifBtn() {
+  const b = $('#notifBtn');
+  if (!('Notification' in window)) { b.hidden = true; return; }
+  b.textContent = Notification.permission === 'granted' ? t('notif.active') : t('notif.enable');
+}
+$('#notifBtn').onclick = async () => { await Notification.requestPermission(); updateNotifBtn(); };
+updateNotifBtn();
+
+async function loadList() {
+  composers = await api('/composers');
+  const fresh = await api('/new');
+  setSeenIfFirstRun(fresh);
+  newList = fresh;
+  updateNewIndicators();
+  if (view === 'new') loadNew();
+  if (selected && !composers.find(c => c.id === selected)) selected = null;
+  $('#list').innerHTML = composers.map(c => `
+    <div class="comp ${c.id===selected?'sel':''}" data-id="${c.id}">
+      <b>${esc(c.name)}</b>
+      <span class="mut">${t('comp.records', c.total)} · ${c.scanning ? t('comp.scanning') : t('comp.verified', fmt(c.last_ok_at))}</span>${progBar(c.scanning)}
+      ${c.last_error?`<div class="err mut">${esc(c.last_error)}</div>`:''}
+    </div>`).join('') || `<p class="mut">${t('list.empty')}</p>`;
+  if (selected) renderDetail();
+}
+
+async function renderDetail() {
+  const c = composers.find(c => c.id === selected);
+  if (!c) return;
+  const songs = await api(`/composers/${c.id}/songs?credits_only=${credOnly?1:0}&new_only=${newOnly?1:0}`);
+  const others = composers.filter(o => o.id !== c.id);
+  $('#detail').innerHTML = `
+    <h2>${esc(c.name)}</h2>${progBar(c.scanning)}
+    <div>${c.terms.map(x => `<span class="chip ${x.primary?'p':''}" ${x.searchable?'':`title="${t('visual.title')}"`} style="${x.searchable?'':'border-style:dashed'}">${esc(x.term)}${x.searchable?'':` <span class="mut">${t('visual.tag')}</span>`}${x.primary?'':`<button class="x" data-delalias="${x.id}" title="${t('alias.remove')}">×</button>`}</span>`).join('')}</div>
+    <form id="aliasForm" class="row" style="margin-top:6px"><input type="text" id="aliasIn" placeholder="${t('alias.placeholder')}" required><button>${t('alias.btn')}</button></form>
+    <label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="visualIn"> ${t('visual.label')}</label>
+    <div class="bar">
+      <button id="scanOne">${t('scan.now')}</button>
+      <label><input type="checkbox" id="credOnly" ${credOnly?'checked':''}> ${t('filter.credits')}</label>
+      <label><input type="checkbox" id="newOnly" ${newOnly?'checked':''}> ${t('filter.new')}</label>
+      ${others.length?`<select id="mergeSel"><option value="">${t('merge.placeholder')}</option>${others.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>`:''}
+      <button id="del" style="margin-left:auto" class="err">${t('delete')}</button>
+    </div>
+    <div class="mut">${t('summary', songs.length, fmt(c.last_ok_at))}</div>
+    <table><thead><tr><th>${t('col.added')}</th><th>${t('col.title')}</th><th>${t('col.credits')}</th><th>${t('col.artist')}</th><th>${t('col.uploads')}</th></tr></thead><tbody>
+    ${songs.map(s => `<tr class="${s.is_new && Date.now()/1000 - s.found_at < 7*86400?'new':''} ${s.credit_match?'':'dim'}">
+      <td>${esc(s.date_added)}</td>
+      <td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>${s.is_new && Date.now()/1000 - s.found_at < 7*86400?`<span class="badge">${t('badge.new')}</span>`:''}</td>
+      <td>${esc(s.credits)}</td><td>${esc([s.artist,s.show].filter(Boolean).join(' / '))}</td><td>${s.uploads}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+$('#addForm').onsubmit = async e => {
+  e.preventDefault();
+  const r = await api('/composers', 'POST', { name: $('#newName').value });
+  $('#newName').value = ''; selected = r.id; await loadList();
+};
+$('#scanAll').onclick = async () => { await api('/scan', 'POST'); setTimeout(loadList, 500); };
+$('#list').onclick = e => { const el = e.target.closest('.comp'); if (el) { selected = +el.dataset.id; loadList(); } };
+$('#detail').onclick = async e => {
+  const el = e.target, id = selected;
+  if (el.dataset.delalias) { await api('/aliases/' + el.dataset.delalias, 'DELETE'); loadList(); }
+  else if (el.id === 'scanOne') { await api(`/composers/${id}/scan`, 'POST'); setTimeout(loadList, 500); }
+  else if (el.id === 'del' && confirm(t('confirm.delete'))) { await api('/composers/' + id, 'DELETE'); selected = null; $('#detail').innerHTML = `<span class="mut">${t('detail.empty')}</span>`; loadList(); }
+  else if (el.id === 'credOnly') { credOnly = el.checked; renderDetail(); }
+  else if (el.id === 'newOnly') { newOnly = el.checked; renderDetail(); }
+};
+$('#detail').onchange = async e => {
+  if (e.target.id === 'mergeSel' && e.target.value) {
+    const into = +e.target.value, target = composers.find(c => c.id === into);
+    if (confirm(t('confirm.merge', target.name))) {
+      await api(`/composers/${selected}/merge`, 'POST', { into }); selected = into; loadList();
+    } else e.target.value = '';
+  }
+};
+$('#detail').onsubmit = async e => {
+  if (e.target.id === 'aliasForm') { e.preventDefault(); await api(`/composers/${selected}/aliases`, 'POST', { alias: $('#aliasIn').value, visual: $('#visualIn').checked }); loadList(); }
+};
+async function loadLog() {
+  const l = await api('/log');
+  $('#log').textContent = l.map(x => `${fmt(x.at)}  [${x.composer}] ${fmtLog(x.msg)}`).join('\n');
+}
+$('#lang').onchange = e => {
+  lang = e.target.value;
+  try { localStorage.setItem('lang', lang); } catch {}
+  applyI18n(); updateNotifBtn(); loadList(); loadLog();
+  if (view === 'new') loadNew();
+};
+applyI18n(); updateNotifBtn();
+loadList(); loadLog();
+let tick = 0;
+setInterval(() => {
+  const busy = composers.some(c => c.scanning);
+  if (busy || ++tick >= 15) { tick = 0; loadList(); loadLog(); }
+}, 1000);
+</script>
+</body>
+</html>
